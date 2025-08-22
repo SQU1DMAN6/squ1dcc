@@ -46,6 +46,20 @@ func testBooleanObject(expected bool, actual object.Object) error {
 	return nil
 }
 
+func testStringObject(expected string, actual object.Object) error {
+	result, ok := actual.(*object.String)
+	if !ok {
+		return fmt.Errorf("Object is not String. Got %T (%+v)", actual, actual)
+	}
+
+	if result.Value != expected {
+		return fmt.Errorf("Object has wrong value. Expected %q, got %q",
+			expected, result.Value)
+	}
+
+	return nil
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 
@@ -88,6 +102,12 @@ func testExpectedObject(
 		err := testBooleanObject(bool(expected), actual)
 		if err != nil {
 			t.Errorf("testBooleanObject failed: %s", err)
+		}
+
+	case string:
+		err := testStringObject(expected, actual)
+		if err != nil {
+			t.Errorf("testStringObject failed: %s", err)
 		}
 
 	case *object.Null:
@@ -148,6 +168,16 @@ func TestBooleanExpressions(t *testing.T) {
 		{"!!false", false},
 		{"!!5", true},
 		{"!(if (false) { 5; })", true},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestStringExpressions(t *testing.T) {
+	tests := []vmTestCase{
+		{`"monkey"`, "monkey"},
+		{`"mon" + "key"`, "monkey"},
+		{`"mon" + "key" + "banana"`, "monkeybanana"},
 	}
 
 	runVmTests(t, tests)
