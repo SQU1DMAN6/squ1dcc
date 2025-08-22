@@ -9,6 +9,7 @@ import (
 	"squ1d++/lexer"
 	"squ1d++/parser"
 	"squ1d++/vm"
+	"squ1d++/object"
 )
 
 const PROMPT = ">> "
@@ -20,6 +21,9 @@ func Start(in io.Reader, out io.Writer) {
 		panic(err)
 	}
 	scanner := bufio.NewScanner(in)
+	constants := []object.Object{}
+	globals := make([]object.Object, vm.GlobalsSize)
+	symbolTable := compiler.NewSymbolTable()
 
 	for {
 		fmt.Fprintf(out, PROMPT)
@@ -39,14 +43,18 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
-		comp := compiler.New()
+		comp := compiler.NewWithState(symbolTable, constants)
 		err := comp.Compile(program)
 		if err != nil {
 			fmt.Fprintf(out, "COMPILATION GOT FLIPPED:\n    %s\n", err)
 			continue
 		}
 
-		machine := vm.New(comp.Bytecode())
+		code := comp.Bytecode()
+		constants = code.Constants
+
+		machine := vm.NewWithGlobalsStore(code, globals)
+		
 		err = machine.Run()
 		if err != nil {
 			fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
