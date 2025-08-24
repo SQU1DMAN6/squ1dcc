@@ -1,3 +1,0 @@
-read("Who are you? ", "name")
-
-write("Hello, ", name, "!")

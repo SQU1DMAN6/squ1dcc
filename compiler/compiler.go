@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 	"squ1d++/ast"
 	"squ1d++/code"
 	"squ1d++/object"
@@ -16,7 +17,7 @@ type Compiler struct {
 }
 
 type EmittedInstruction struct {
-	Opcode code.Opcode
+	Opcode   code.Opcode
 	Position int
 }
 
@@ -69,12 +70,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		switch node.Operator {
-			case "!":
-				c.emit(code.OpBang)
-			case "-":
-				c.emit(code.OpNGT)
-			default:
-				return fmt.Errorf("Unknown operator: %s", node.Operator)
+		case "!":
+			c.emit(code.OpBang)
+		case "-":
+			c.emit(code.OpNGT)
+		default:
+			return fmt.Errorf("Unknown operator: %s", node.Operator)
 		}
 
 	case *ast.InfixExpression:
@@ -92,7 +93,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpGreaterThan)
 			return nil
 		}
-		
+
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -182,6 +183,51 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			c.emit(code.OpFalse)
 		}
+
+	case *ast.ArrayLiteral:
+		for _, el := range node.Elements {
+			err := c.Compile(el)
+			if err != nil {
+				return err
+			}
+		}
+
+		c.emit(code.OpArray, len(node.Elements))
+
+	case *ast.HashLiteral:
+		keys := []ast.Expression{}
+		for k := range node.Pairs {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i].String() < keys[j].String()
+		})
+
+		for _, k := range keys {
+			err := c.Compile(k)
+			if err != nil {
+				return err
+			}
+			err = c.Compile(node.Pairs[k])
+			if err != nil {
+				return err
+			}
+		}
+
+		c.emit(code.OpHash, len(node.Pairs)*2)
+
+	case *ast.IndexExpression:
+		err := c.Compile(node.Left)
+		if err != nil {
+			return err
+		}
+
+		err = c.Compile(node.Index)
+		if err != nil {
+			return err
+		}
+
+		c.emit(code.OpIndex)
 
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
