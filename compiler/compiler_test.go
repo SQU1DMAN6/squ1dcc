@@ -327,7 +327,7 @@ func TestConditionals(t *testing.T) {
 	tests := []compilerTestCase{
 		{
 			input: `
-			if (true) { 10 }; 3333
+			if (true) { 10 }; 3333;
 			`,
 			expectedConstants: []interface{}{10, 3333},
 			expectedInstructions: []code.Instructions{
@@ -353,6 +353,30 @@ func TestConditionals(t *testing.T) {
 				code.Make(code.OpJump, 13),
 				code.Make(code.OpConstant, 1),
 				code.Make(code.OpPop),
+				code.Make(code.OpConstant, 2),
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
+func TestFunctions(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			input: `def() { return 5 + 10 }`,
+			expectedConstants: []interface{}{
+				5,
+				10,
+				[]code.Instructions{
+					code.Make(code.OpConstant, 0),
+					code.Make(code.OpConstant, 1),
+					code.Make(code.OpAdd),
+					code.Make(code.OpReturnValue),
+				},
+			},
+			expectedInstructions: []code.Instructions{
 				code.Make(code.OpConstant, 2),
 				code.Make(code.OpPop),
 			},
@@ -503,6 +527,19 @@ func testConstants(
 				return fmt.Errorf("Constant %d - testStringObject failed: %s",
 					i, err)
 			}
+
+		case []code.Instructions:
+			fn, ok := actual[i].(*object.CompiledFunction)
+			if !ok {
+				return fmt.Errorf("Constant %d is not a function: %T",
+					i, actual[i])
+			}
+
+			err := testInstructions(constant, fn.Instructions)
+			if err != nil {
+				return fmt.Errorf("Constant %d failed testInstructions: %s",
+					i, err)
+			}
 		}
 	}
 
@@ -537,4 +574,58 @@ func testStringObject(expected string, actual object.Object) error {
 	}
 
 	return nil
+}
+
+func TestCompilerScopes(t *testing.T) {
+	compiler := New()
+	if compiler.scopeIndex != 0 {
+		t.Errorf("scopeIndex is wrong. Expected %d, got %d",
+			0, compiler.scopeIndex)
+	}
+
+	compiler.emit(code.OpMul)
+
+	compiler.enterScope()
+	if compiler.scopeIndex != 1 {
+		t.Errorf("scopeIndex is wrong. Expected %d, got %d",
+			1, compiler.scopeIndex)
+	}
+
+	compiler.emit(code.OpSub)
+
+	if len(compiler.scopes[compiler.scopeIndex].instructions) != 1 {
+		t.Errorf("Instructions length is wrong. Got %d",
+			len(compiler.scopes[compiler.scopeIndex].instructions))
+	}
+
+	last := compiler.scopes[compiler.scopeIndex].lastInstruction
+	if last.Opcode != code.OpSub {
+		t.Errorf("lastInstruction.Opcode is wrong. Expected %d, got %d",
+			code.OpSub, last.Opcode)
+	}
+
+	compiler.leaveScope()
+	if compiler.scopeIndex != 0 {
+		t.Errorf("scopeIndex is wrong. Expected %d, got %d",
+			0, compiler.scopeIndex)
+	}
+
+	compiler.emit(code.OpAdd)
+
+	if len(compiler.scopes[compiler.scopeIndex].instructions) != 2 {
+		t.Errorf("Instructions length is wrong. Got %d",
+			len(compiler.scopes[compiler.scopeIndex].instructions))
+	}
+
+	last = compiler.scopes[compiler.scopeIndex].lastInstruction
+	if last.Opcode != code.OpAdd {
+		t.Errorf("lastInstruction.Opcode is wrong. Expected %d, got %d",
+			code.OpAdd, last.Opcode)
+	}
+
+	previous := compiler.scopes[compiler.scopeIndex].previousInstruction
+	if previous.Opcode != code.OpMul {
+		t.Errorf("previousInstruction.Opcode is wrong. Expected %d, got %d",
+			code.OpMul, previous.Opcode)
+	}
 }
