@@ -60,7 +60,6 @@ func testStringObject(expected string, actual object.Object) error {
 	return nil
 }
 
-// arm
 func TestArrayLiterals(t *testing.T) {
 	tests := []vmTestCase{
 		{"[]", []int{}},
@@ -302,6 +301,90 @@ func TestGlobalLetStatements(t *testing.T) {
 		{"var one = 1; one", 1},
 		{"var one = 1; var two = 2; one + two", 3},
 		{"var one = 1; var two = one + one; one + two", 3},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestCallingFunctionsWithoutArguments(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var fiveplusten = def() { 5 + 10; };
+			fiveplusten()
+			`,
+			expected: 15,
+		},
+		{
+			input: `
+var one = def() { 1; };
+var two = def() { 2; };
+one() + two()
+`,
+			expected: 3,
+		},
+		{
+			input: `
+var a = def() { 1 };
+var b = def() { a() + 1 };
+var c = def() { b() + 1 };
+c();
+`,
+			expected: 3,
+		},
+		{
+			input: `
+			var returnsone = def() { 1; };
+			var returnsonereturner = def() { returnsone; };
+			returnsonereturner()();
+			`,
+			expected: 1,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+// I see the file got some errors and I know you are here.
+func TestFunctionsWithReturnStatement(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var earlyExit = def() { return 99; 100; };
+			earlyExit();
+			`,
+			expected: 99,
+		},
+		{
+			input: `
+			var earlyExit = def() { return 99; return 100; };
+			earlyExit();
+			`,
+			expected: 99,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestFunctionsWithoutReturnValue(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var noreturn = def() {};
+			noreturn();
+			`,
+			expected: Null,
+		},
+		{
+			input: `
+			var noreturn = def() {};
+			var noreturntwo = def() { noreturn(); };
+			noreturn();
+			noreturntwo();
+			`,
+			expected: Null,
+		},
 	}
 
 	runVmTests(t, tests)
