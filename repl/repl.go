@@ -7,9 +7,9 @@ import (
 	"os/user"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
+	"squ1d++/object"
 	"squ1d++/parser"
 	"squ1d++/vm"
-	"squ1d++/object"
 )
 
 const PROMPT = ">> "
@@ -46,7 +46,7 @@ func Start(in io.Reader, out io.Writer) {
 		comp := compiler.NewWithState(symbolTable, constants)
 		err := comp.Compile(program)
 		if err != nil {
-			fmt.Fprintf(out, "COMPILATION GOT FLIPPED:\n    %s\n", err)
+			fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
 			continue
 		}
 
@@ -54,7 +54,7 @@ func Start(in io.Reader, out io.Writer) {
 		constants = code.Constants
 
 		machine := vm.NewWithGlobalsStore(code, globals)
-		
+
 		err = machine.Run()
 		if err != nil {
 			fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)

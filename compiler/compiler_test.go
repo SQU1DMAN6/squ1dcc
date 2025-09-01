@@ -574,11 +574,11 @@ def() {
 		},
 		{
 			input: `
-def() {
-	var a = 55;
-	var b = 77;
-	a + b
-}
+			def() {
+				var a = 55;
+				var b = 77;
+				a + b
+			}
 `,
 			expectedConstants: []interface{}{
 				55,

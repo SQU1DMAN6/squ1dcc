@@ -390,6 +390,61 @@ func TestFunctionsWithoutReturnValue(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestCallingFunctionsWithBindings(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var one = def() {
+				var one = 1;
+				one;
+			}
+			one();
+			`,
+			expected: 1,
+		},
+		{
+			input: `
+var oneAndTwo = def() { var one = 1; var two = 2; one + two; };
+oneAndTwo();
+`,
+			expected: 3,
+		},
+		{
+			input: `
+var oneAndTwo = def() { var one = 1; var two = 2; one + two; };
+var threeAndFour = def() { var three = 3; var four = 4; three + four; };
+oneAndTwo() + threeAndFour();
+`,
+			expected: 10,
+		},
+		{
+			input: `
+var firstFoobar = def() { var foobar = 50; foobar; };
+var secondFoobar = def() { var foobar = 100; foobar; };
+firstFoobar() + secondFoobar();
+`,
+			expected: 150,
+		},
+		{
+			input: `
+var globalSeed = 50;
+var minusOne = def() {
+var num = 1;
+globalSeed - num;
+}
+var minusTwo = def() {
+var num = 2;
+globalSeed - num;
+}
+minusOne() + minusTwo();
+`,
+			expected: 97,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 type vmTestCase struct {
 	input    string
 	expected interface{}
