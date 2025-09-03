@@ -445,6 +445,59 @@ minusOne() + minusTwo();
 	runVmTests(t, tests)
 }
 
+func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var identity = def(a) { a; };
+			identity(4);
+			`,
+			expected: 4,
+		},
+		{
+			input: `
+			var sum = def(a, b) { a + b; };
+			sum(1, 2);
+			`,
+			expected: 3,
+		},
+		{
+			input: `
+var sum = def(a, b) {
+	var c = a + b;
+	c;
+};
+sum(1, 2);
+`,
+			expected: 3,
+		},
+		{
+			input: `
+var sum = def(a, b) {
+	var c = a + b;
+	c;
+};
+sum(1, 2) + sum(3, 4);`,
+			expected: 10,
+		},
+		{
+			input: `
+var sum = def(a, b) {
+	var c = a + b;
+	c;
+};
+var outer = def() {
+	sum(1, 2) + sum(3, 4);
+};
+outer();
+`,
+			expected: 10,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 type vmTestCase struct {
 	input    string
 	expected interface{}
