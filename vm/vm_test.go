@@ -498,6 +498,44 @@ outer();
 	runVmTests(t, tests)
 }
 
+func TestCallingFunctionsWithWrongArguments(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input:    `def() { 1; }(1)`,
+			expected: `Wrong number of arguments. Expected 0, got 1`,
+		},
+		{
+			input:    `def(a) { a; }();`,
+			expected: `Wrong number of arguments. Expected 1, got 0`,
+		},
+		{
+			input:    `def(a, b) { a + b; }(1);`,
+			expected: `Wrong number of arguments. Expected 2, got 1`,
+		},
+	}
+
+	for _, tt := range tests {
+		program := parse(tt.input)
+
+		comp := compiler.New()
+		err := comp.Compile(program)
+		if err != nil {
+			t.Fatalf("Compiler error: %s", err)
+		}
+
+		vm := New(comp.Bytecode())
+		err = vm.Run()
+		if err == nil {
+			t.Fatalf("Expected VM error but resulted in none.")
+		}
+
+		if err.Error() != tt.expected {
+			t.Fatalf("Wrong VM error: Expected %q, got %q",
+				tt.expected, err)
+		}
+	}
+}
+
 type vmTestCase struct {
 	input    string
 	expected interface{}
