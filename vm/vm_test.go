@@ -248,6 +248,8 @@ func TestBooleanExpressions(t *testing.T) {
 		{"1 != 1", false},
 		{"1 == 2", false},
 		{"1 != 2", true},
+		{"\"hello\" == \"hello\"", true},
+		{"\"hello\" != \"hello\"", false},
 		{"true == true", true},
 		{"false == false", true},
 		{"true == false", false},

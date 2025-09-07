@@ -257,7 +257,7 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
 		return vm.executeIntegerComparison(op, left, right)
 	} else if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
-		return fmt.Errorf("I will get to this soon. It's not done.")
+		return vm.executeStringComparison(op, left, right)
 	}
 
 	switch op {
@@ -328,6 +328,23 @@ func (vm *VM) executeIntegerComparison(
 		return vm.push(nativeBoolToBooleanObject(rightValue != leftValue))
 	case code.OpGreaterThan:
 		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
+	default:
+		return fmt.Errorf("Unknown operator: %d", op)
+	}
+}
+
+func (vm *VM) executeStringComparison(
+	op code.Opcode,
+	left, right object.Object,
+) error {
+	leftValue := left.(*object.String).Value
+	rightValue := right.(*object.String).Value
+
+	switch op {
+	case code.OpEqual:
+		return vm.push(nativeBoolToBooleanObject(rightValue == leftValue))
+	case code.OpNotEqual:
+		return vm.push(nativeBoolToBooleanObject(rightValue != leftValue))
 	default:
 		return fmt.Errorf("Unknown operator: %d", op)
 	}
