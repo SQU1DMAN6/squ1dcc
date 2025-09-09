@@ -210,6 +210,18 @@ func testExpectedObject(
 		if actual != Null {
 			t.Errorf("Object is not Null. Got %T (%+v)", actual, actual)
 		}
+
+	case *object.Error:
+		errObj, ok := actual.(*object.Error)
+		if !ok {
+			t.Errorf("Object is not an Error. Got %T (%+v)", actual, actual)
+			return
+		}
+
+		if errObj.Message != expected.Message {
+			t.Errorf("Wrong error message. Expected %q, got %q",
+				expected.Message, errObj.Message)
+		}
 	}
 }
 
@@ -536,6 +548,39 @@ func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 				tt.expected, err)
 		}
 	}
+}
+
+func TestBuiltinFunctions(t *testing.T) {
+	tests := []vmTestCase{
+		{`cat("")`, 0},
+		{`cat("four")`, 4},
+		{`cat("Hello, World!")`, 13},
+		{`cat([1, 2, 3])`, 3},
+		{`cat([])`, 0},
+		{
+			`cat("one", "two")`,
+			&object.Error{
+				Message: "Wrong number of arguments. Expected 1, got 2",
+			},
+		},
+		{
+			`cat(1)`,
+			&object.Error{
+				Message: "Argument 0 to `cat` is not supported, got INTEGER",
+			},
+		},
+		{
+			`append([], 1)`, []int{1},
+		},
+		{
+			`append(1, 1)`,
+			&object.Error{
+				Message: "Argument 0 to `append` must be ARRAY, got INTEGER",
+			},
+		},
+	}
+
+	runVmTests(t, tests)
 }
 
 type vmTestCase struct {
