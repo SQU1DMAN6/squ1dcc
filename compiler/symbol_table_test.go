@@ -82,6 +82,23 @@ func TestDefineResolveBuiltins(t *testing.T) {
 	}
 }
 
+func TestDefineAndResolveFunctionName(t *testing.T) {
+	global := NewSymbolTable()
+	global.DefineFunctionName("a")
+
+	expected := Symbol{Name: "a", Scope: FunctionScope, Index: 0}
+
+	result, ok := global.Resolve(expected.Name)
+	if !ok {
+		t.Fatalf("Function name %s is not resolvable", expected.Name)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %s to resolve to %+v, got %+v",
+			expected.Name, expected, result)
+	}
+}
+
 func TestResolveGlobal(t *testing.T) {
 	global := NewSymbolTable()
 	global.Define("a")
@@ -197,7 +214,7 @@ func TestResolveFree(t *testing.T) {
 	secondLocal.Define("e")
 	secondLocal.Define("f")
 
-	tests := []struct{
+	tests := []struct {
 		table               *SymbolTable
 		expectedSymbols     []Symbol
 		expectedFreeSymbols []Symbol
@@ -222,7 +239,7 @@ func TestResolveFree(t *testing.T) {
 				Symbol{Name: "e", Scope: LocalScope, Index: 0},
 				Symbol{Name: "f", Scope: LocalScope, Index: 1},
 			},
-				[]Symbol{
+			[]Symbol{
 				Symbol{Name: "c", Scope: LocalScope, Index: 0},
 				Symbol{Name: "d", Scope: LocalScope, Index: 1},
 			},
@@ -298,5 +315,23 @@ func TestResolveUnresolvableFree(t *testing.T) {
 		if ok {
 			t.Errorf("Name %s resolved, but was not meant to.", name)
 		}
+	}
+}
+
+func TestShadowingFunctionName(t *testing.T) {
+	global := NewSymbolTable()
+	global.DefineFunctionName("a")
+	global.Define("a")
+
+	expected := Symbol{Name: "a", Scope: GlobalScope, Index: 0}
+
+	result, ok := global.Resolve(expected.Name)
+	if !ok {
+		t.Fatalf("Function %s is not resolvable", expected.Name)
+	}
+
+	if result != expected {
+		t.Errorf("Expected %s to resolve to %+v, got %+v",
+			expected.Name, expected, result)
 	}
 }

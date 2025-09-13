@@ -550,6 +550,121 @@ func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 	}
 }
 
+func TestClosures(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var newClosure = def(a) {
+				def() { a; };
+			};
+			var closure = newClosure(99)
+			closure();
+			`,
+			expected: 99,
+		},
+		{
+			input: `
+			var newAdder = def(a, b) {
+				def(c) { a + b + c };
+			}
+			var adder = newAdder(1, 2);
+			adder(8);
+			`,
+			expected: 11,
+		},
+		{
+			input: `
+			var newAdder = def(a, b) {
+				var c = a + b
+				def(d) { c + d }
+			}
+			var adder = newAdder(1, 2)
+			adder(8)
+			`,
+			expected: 11,
+		},
+		{
+			input: `
+var newAdderOuter = def(a, b) {
+var c = a + b;
+def(d) {
+var e = d + c;
+def(f) { e + f; };
+};
+};
+var newAdderInner = newAdderOuter(1, 2)
+var adder = newAdderInner(3);
+adder(8);
+`,
+			expected: 14,
+		},
+		{
+			input: `
+var a = 1;
+var newAdderOuter = def(b) {
+def(c) {
+def(d) { a + b + c + d };
+};
+};
+var newAdderInner = newAdderOuter(2)
+var adder = newAdderInner(3);
+adder(8);
+`,
+			expected: 14,
+		},
+		{
+			input: `
+var newClosure = def(a, b) {
+var one = def() { a; };
+var two = def() { b; };
+def() { one() + two(); };
+};
+var closure = newClosure(9, 90);
+closure();
+`,
+			expected: 99,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestRecursiveFunctions(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			var countdown = def(x) {
+				if (x == 0) {
+					return 0;
+				} el {
+					countdown(x - 1)
+				}
+			}
+			countdown(9);
+			`,
+			expected: 0,
+		},
+		{
+			input: `
+			var wrapper = def() {
+				var countdown = def(x) {
+					if (x == 0) {
+						return 0
+					} el {
+						countdown(x - 1)
+					}
+				}
+				countdown(9)
+			}
+			wrapper()
+			`,
+			expected: 0,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func TestBuiltinFunctions(t *testing.T) {
 	tests := []vmTestCase{
 		{`cat("")`, 0},
