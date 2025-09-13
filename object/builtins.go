@@ -1,7 +1,11 @@
 package object
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 )
 
 var Builtins = []struct {
@@ -29,13 +33,74 @@ var Builtins = []struct {
 		},
 	},
 	{
-		"write",
+		"tp",
 		&Builtin{Fn: func(args ...Object) Object {
-			for _, arg := range args {
-				fmt.Println(arg.Inspect())
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
 			}
 
-			return nil
+			switch args[0].(type) {
+			case *Array:
+				return &String{Value: "Array"}
+			case *String:
+				return &String{Value: "String"}
+			case *Hash:
+				return &String{Value: "Object"}
+			case *Integer:
+				return &String{Value: "Integer"}
+			case *Boolean:
+				return &String{Value: "Boolean"}
+			case *Function:
+				return &String{Value: "Function"}
+			default:
+				return &String{Value: "Null"}
+			}
+		},
+		},
+	},
+	{
+		"read",
+		&Builtin{Fn: func(args ...Object) Object {
+			if len(args) != 0 && len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 0 or 1, got %d", len(args))
+			}
+
+			if len(args) == 1 {
+				prompt, ok := args[0].(*String)
+				if !ok {
+					return newError("Argument 0 to `read` must be STRING, got %s", args[0].Type())
+				}
+				fmt.Print(prompt.Value)
+			}
+
+			reader := bufio.NewReader(os.Stdin)
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				return newError("Failed to read input: %s", err)
+			}
+
+			input = strings.TrimSpace(input)
+
+			var value Object
+			if intVal, err := strconv.ParseInt(input, 10, 64); err == nil {
+				value = &Integer{Value: intVal}
+			} else {
+				value = &String{Value: input}
+			}
+
+			return value
+		},
+		},
+	},
+	{
+		"write",
+		&Builtin{Fn: func(args ...Object) Object {
+			var elements []string
+			for _, arg := range args {
+				elements = append(elements, arg.Inspect())
+			}
+
+			return &String{Value: strings.Join(elements, "")}
 		},
 		},
 	},
