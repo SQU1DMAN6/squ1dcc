@@ -17,6 +17,7 @@ const (
 	NULL_OBJ              = "NULL"
 	ERROR_OBJ             = "ERROR"
 	INTEGER_OBJ           = "INTEGER"
+	FLOAT_OBJ             = "FLOAT"
 	BOOLEAN_OBJ           = "BOOLEAN"
 	STRING_OBJ            = "STRING"
 	RETURN_VALUE_OBJ      = "RETURN_VALUE"
@@ -50,6 +51,16 @@ func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
 func (i *Integer) Inspect() string  { return fmt.Sprintf("%d", i.Value) }
 func (i *Integer) HashKey() HashKey {
 	return HashKey{Type: i.Type(), Value: uint64(i.Value)}
+}
+
+type Float struct {
+	Value float64
+}
+
+func (float *Float) Type() ObjectType { return FLOAT_OBJ }
+func (float *Float) Inspect() string  { return fmt.Sprintf("%f", float.Value) }
+func (float *Float) HashKey() HashKey {
+	return HashKey{Type: float.Type(), Value: uint64(float.Value)}
 }
 
 type Boolean struct {

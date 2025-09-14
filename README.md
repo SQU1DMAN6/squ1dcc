@@ -246,7 +246,7 @@ var student = {
 };
 
 write("Student:", student["name"]);
-write("Average grade:", student["grades"][0]);
+write("Average grade: ", student["grades"][0]);
 ```
 
 ### Interactive Program

@@ -113,6 +113,40 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return nil
 		}
 
+		if node.Operator == "<=" {
+			err := c.Compile(node.Left)
+			if err != nil {
+				return err
+			}
+
+			err = c.Compile(node.Right)
+			if err != nil {
+				return err
+			}
+
+			c.emit(code.OpGreaterThan)
+			// Invert the result for <= (a <= b is !(a > b))
+			c.emit(code.OpBang)
+			return nil
+		}
+
+		if node.Operator == ">=" {
+			err := c.Compile(node.Right)
+			if err != nil {
+				return err
+			}
+
+			err = c.Compile(node.Left)
+			if err != nil {
+				return err
+			}
+
+			c.emit(code.OpGreaterThan)
+			// Invert the result for >= (a >= b is !(b > a))
+			c.emit(code.OpBang)
+			return nil
+		}
+
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -132,12 +166,30 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpMul)
 		case "/":
 			c.emit(code.OpDiv)
+		case "%":
+			c.emit(code.OpMod)
 		case ">":
 			c.emit(code.OpGreaterThan)
 		case "==":
 			c.emit(code.OpEqual)
 		case "!=":
 			c.emit(code.OpNotEqual)
+		case "=":
+			// Handle assignment
+			if ident, ok := node.Left.(*ast.Identifier); ok {
+				symbol, ok := c.symbolTable.Resolve(ident.Value)
+				if !ok {
+					return fmt.Errorf("Undefined variable %s", ident.Value)
+				}
+
+				if symbol.Scope == GlobalScope {
+					c.emit(code.OpSetGlobal, symbol.Index)
+				} else {
+					c.emit(code.OpSetLocal, symbol.Index)
+				}
+			} else {
+				return fmt.Errorf("Expected identifier for assignment, got %T", node.Left)
+			}
 		default:
 			return fmt.Errorf("Unknown operator %s", node.Operator)
 		}
@@ -178,6 +230,66 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		afterAlternativePos := len(c.currentInstructions())
 		c.changeOperand(jumpPos, afterAlternativePos)
+
+	case *ast.WhileExpression:
+		loopStart := len(c.currentInstructions())
+
+		err := c.Compile(node.Condition)
+		if err != nil {
+			return err
+		}
+
+		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+		err = c.Compile(node.Body)
+		if err != nil {
+			return err
+		}
+
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		// Jump back to the beginning of the loop
+		c.emit(code.OpJump, loopStart)
+
+		// Set the jump target for when condition is false
+		afterLoopPos := len(c.currentInstructions())
+		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+
+		// Push null as the result of the while loop
+		c.emit(code.OpNull)
+
+	case *ast.WhileStatement:
+		loopStart := len(c.currentInstructions())
+
+		err := c.Compile(node.Condition)
+		if err != nil {
+			return err
+		}
+
+		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+		err = c.Compile(node.Body)
+		if err != nil {
+			return err
+		}
+
+		// Pop the result of the body if it exists
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		// Jump back to the beginning of the loop
+		c.emit(code.OpJump, loopStart)
+
+		// Set the jump target for when condition is false
+		afterLoopPos := len(c.currentInstructions())
+		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+
+		// Pop the condition result and push null as the result of the while loop
+		c.emit(code.OpPop)
+		c.emit(code.OpNull)
 
 	case *ast.LetStatement:
 		symbol := c.symbolTable.Define(node.Name.Value)
@@ -258,6 +370,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}
 		c.emit(code.OpConstant, c.addConstant(integer))
+
+	case *ast.FloatLiteral:
+		float := &object.Float{Value: node.Value}
+		c.emit(code.OpConstant, c.addConstant(float))
 
 	case *ast.StringLiteral:
 		str := &object.String{Value: node.Value}

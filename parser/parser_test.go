@@ -192,6 +192,38 @@ func TestIntegerLiteralExpression(t *testing.T) {
 	}
 }
 
+func TestFloatLiteralExpression(t *testing.T) {
+	input := "'9.01234"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("Program has wrong number of statements. Expected 1, got %d", len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+
+	if !ok {
+		t.Fatalf("program.Statements[0] is not ast.ExpressionStatement. Got %T", program.Statements[0])
+	}
+
+	literal, ok := stmt.Expression.(*ast.FloatLiteral)
+	if !ok {
+		t.Fatalf("exp is not *ast.FloatLiteral. Got %T", stmt.Expression)
+	}
+
+	if literal.Value != 9.01234 {
+		t.Errorf("literal.Value is not %f. Got %f", 9.01234, literal.Value)
+	}
+
+	if literal.TokenLiteral() != "'9.01234" {
+		t.Errorf("literal.TokenLiteral is not %s. Got %s", "'9.01234", literal.TokenLiteral())
+	}
+}
+
 func testStringLiteralExpression(t *testing.T) {
 	input := `"hello world";`
 
@@ -635,17 +667,6 @@ func TestParsingInfixExpressions(t *testing.T) {
 		if exp.Operator != tt.operator {
 			t.Fatalf("exp.Operator is not '%s'. Got %s", tt.operator, exp.Operator)
 		}
-
-		// FIXED THAT: we REPLACE !testIntegerLiteral by !testLiteralExpression, dont keep testIntegerLiteral
-		// // this is where we used tobe ---<<<<<<<<<<<<<< Fix this-------------
-		// if !testIntegerLiteral(t, exp.Right, tt.rightValue) {
-		// 	return
-		// }
-
-		// // this is where we used tobe ---<<<<<<<<<<<<<< Fix this------------
-		// if !testIntegerLiteral(t, exp.Left, tt.leftValue) {
-		// 	return
-		// }
 
 		if !testLiteralExpression(t, exp.Left, tt.leftValue) {
 			return

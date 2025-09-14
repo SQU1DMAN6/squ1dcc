@@ -12,6 +12,18 @@ var Builtins = []struct {
 	Name    string
 	Builtin *Builtin
 }{
+	// {
+	// 	"sleep",
+	// 	&Builtin{Fn: func(args ...Object) Object {
+	// 		if len(args) != 1 {
+	// 			return newError("Wrong number of arguments. Expected 1, got %d",
+	// 				len(args))
+	// 		}
+
+	// 		time, ok := args[0].(*Integer)
+	// 	},
+	// 	},
+	// }
 	{
 		"cat",
 		&Builtin{Fn: func(args ...Object) Object {
@@ -59,6 +71,30 @@ var Builtins = []struct {
 		},
 	},
 	{
+		"append",
+		&Builtin{Fn: func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("Wrong number of arguments. Expected 2, got %d",
+					len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("Argument 0 to `append` must be ARRAY, got %s",
+					args[0].Type())
+			}
+
+			length := len(arr.Elements)
+
+			newElements := make([]Object, length+1, length+1)
+			copy(newElements, arr.Elements)
+			newElements[length] = args[1]
+
+			return &Array{Elements: newElements}
+		},
+		},
+	},
+	{
 		"read",
 		&Builtin{Fn: func(args ...Object) Object {
 			if len(args) != 0 && len(args) != 1 {
@@ -101,30 +137,6 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: strings.Join(elements, "")}
-		},
-		},
-	},
-	{
-		"append",
-		&Builtin{Fn: func(args ...Object) Object {
-			if len(args) != 2 {
-				return newError("Wrong number of arguments. Expected 2, got %d",
-					len(args))
-			}
-
-			arr, ok := args[0].(*Array)
-			if !ok {
-				return newError("Argument 0 to `append` must be ARRAY, got %s",
-					args[0].Type())
-			}
-
-			length := len(arr.Elements)
-
-			newElements := make([]Object, length+1, length+1)
-			copy(newElements, arr.Elements)
-			newElements[length] = args[1]
-
-			return &Array{Elements: newElements}
 		},
 		},
 	},

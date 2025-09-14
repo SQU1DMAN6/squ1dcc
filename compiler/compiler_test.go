@@ -82,6 +82,42 @@ func TestIntegerArithmetic(t *testing.T) {
 	runCompilerTests(t, tests)
 }
 
+func TestFloatArithmetic(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			input:             "'1.1",
+			expectedConstants: []interface{}{float64(1.1)},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpPop),
+			},
+		},
+		{
+			input:             "'123.456000000",
+			expectedConstants: []interface{}{float64(123.456)},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpPop),
+			},
+		},
+		{
+			input: "'1.12123 + '54.234958700000",
+			expectedConstants: []interface{}{
+				float64(1.12123),
+				float64(54.234958700000),
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpAdd),
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
 func TestBooleanExpressions(t *testing.T) {
 	tests := []compilerTestCase{
 		{
@@ -1011,6 +1047,14 @@ func testConstants(
 
 	for i, constant := range expected {
 		switch constant := constant.(type) {
+		case float64:
+			err := testFloatObject(float64(constant), actual[i])
+
+			if err != nil {
+				return fmt.Errorf("Constant %d / testFloatObject failed: %s",
+					i, err)
+			}
+
 		case int:
 			err := testIntegerObject(int64(constant), actual[i])
 
@@ -1054,6 +1098,22 @@ func testIntegerObject(expected int64, actual object.Object) error {
 
 	if result.Value != expected {
 		return fmt.Errorf("Object has wrong value. Expected %d, got %d",
+			expected, result.Value)
+	}
+
+	return nil
+}
+
+func testFloatObject(expected float64, actual object.Object) error {
+	result, ok := actual.(*object.Float)
+
+	if !ok {
+		return fmt.Errorf("Object is not float. Got %T (%+v)",
+			actual, actual)
+	}
+
+	if result.Value != expected {
+		return fmt.Errorf("Object has wrong value. Expected %f, got %f",
 			expected, result.Value)
 	}
 

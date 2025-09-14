@@ -47,6 +47,10 @@ func (l *Lexer) NextToken() token.Token {
 			tok = newToken(token.ILLEGAL, l.ch)
 		}
 
+	case '\'':
+		tok.Type = token.FLOAT
+		tok.Literal = l.readFloat()
+		return tok
 	case '=':
 		tok = newToken(token.ASSIGN, l.ch)
 		if l.peekChar() == '=' {
@@ -62,10 +66,24 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.SLASH, l.ch)
 	case '*':
 		tok = newToken(token.ASTERISK, l.ch)
+	case '%':
+		tok = newToken(token.MODULO, l.ch)
 	case '<':
-		tok = newToken(token.LT, l.ch)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.LE, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = newToken(token.LT, l.ch)
+		}
 	case '>':
-		tok = newToken(token.GT, l.ch)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.GE, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = newToken(token.GT, l.ch)
+		}
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch)
 	case '(':
@@ -136,6 +154,15 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
+func (l *Lexer) readFloat() string {
+	position := l.position
+
+	for isFloatChar(l.ch) {
+		l.readChar()
+	}
+	return l.input[position:l.position]
+}
+
 func (l *Lexer) readString() string {
 	position := l.position + 1
 	for {
@@ -150,6 +177,14 @@ func (l *Lexer) readString() string {
 
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
+}
+
+func isFloatChar(ch byte) bool {
+	return ('0' <= ch && ch <= '9') || ch == '.' || ch == '-' || ch == '\''
+}
+
+func isDP(ch byte) bool {
+	return ch == '.'
 }
 
 func (l *Lexer) peekChar() byte {

@@ -248,6 +248,21 @@ func TestIntegerArithmetic(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestFloatArithmetic(t *testing.T) {
+	tests := []vmTestCase{
+		{"'1", float64(1)},
+		{"'1.123", float64(1.123)},
+		{"'12.69", float64(12.69)},
+		{"'1.40000", float64(1.4)},
+		{"'1 + '1", float64(2)},
+		{"'3 - '2", float64(1)},
+		{"'2.5 * '2", float64(5)},
+		{"'7 / '2", float64(3.5)},
+	}
+
+	runVmTests(t, tests)
+}
+
 func TestBooleanExpressions(t *testing.T) {
 	tests := []vmTestCase{
 		{"true", true},

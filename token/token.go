@@ -11,6 +11,7 @@ const (
 	EOF       = "EOF"
 	IDENT     = "IDENT"
 	INT       = "INT"
+	FLOAT     = "FLOAT"
 	ASSIGN    = "="
 	PLUS      = "+"
 	COMMA     = ","
@@ -25,13 +26,18 @@ const (
 	BANG      = "!"
 	ASTERISK  = "*"
 	SLASH     = "/"
+	MODULO    = "%"
 	LT        = "<"
 	GT        = ">"
+	LE        = "<="
+	GE        = ">="
 	RETURN    = "RETURN"
 	TRUE      = "TRUE"
 	FALSE     = "FALSE"
 	IF        = "IF"
 	ELSE      = "ELSE"
+	ELIF      = "ELIF"
+	WHILE     = "WHILE"
 	EQ        = "=="
 	NOT_EQ    = "!="
 	STRING    = "STRING"
@@ -47,6 +53,8 @@ var keywords = map[string]TokenType{
 	"false":  FALSE,
 	"if":     IF,
 	"el":     ELSE,
+	"elif":   ELIF,
+	"while":  WHILE,
 	"return": RETURN,
 }
 
