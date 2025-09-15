@@ -38,6 +38,15 @@ SQU1DLang supports the following primitive data types:
 0
 ```
 
+### Floats
+
+```squ1d
+'42
+'-17
+'1.123
+'29.24837
+```
+
 ### Booleans
 
 ```squ1d
@@ -64,7 +73,7 @@ Variables are declared using the `var` keyword:
 
 ```squ1d
 var x = 42;
-var name = "SQU1D++";
+var name = "SQU1DLang";
 var isActive = true;
 ```
 
@@ -120,7 +129,7 @@ if (x > 0) {
 }
 ```
 
-Note: The `else` keyword is shortened to `el` in SQU1D++.
+Note: The `else` keyword is shortened to `el` in SQU1DLang.
 
 ### Conditional Expressions
 
@@ -168,7 +177,7 @@ var age = person["age"];
 
 ## Built-in Functions
 
-SQU1D++ provides several built-in functions:
+SQU1DLang provides several built-in functions:
 
 ### `write(...args)`
 
@@ -284,7 +293,7 @@ write("Average grade: ", student["grades"][0]);
 ### Interactive Program
 
 ```squ1d
-write("Welcome to SQU1D++ Calculator!");
+write("Welcome to SQU1DLang Calculator!");
 var num1 = read("Enter first number: ");
 var num2 = read("Enter second number: ");
 var sum = num1 + num2;
@@ -301,14 +310,14 @@ write("The sum is: ", sum);
 
 ## Getting Started
 
-To run SQU1D++ code, use the REPL:
+To run SQU1DLang code, use the REPL:
 
 ```bash
 go run .
 ```
 
-This will start an interactive session where you can type SQU1D++ code and see the results immediately.
+This will start an interactive session where you can type SQU1DLang code and see the results immediately.
 
 ---
 
-_SQU1D++ Compiler, version 0.5, written by Quan Thai._
+_SQU1D++ SQU1DLang Compiler, version 1, written by Quan Thai._
