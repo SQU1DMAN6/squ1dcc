@@ -57,10 +57,16 @@ type Float struct {
 	Value float64
 }
 
-func (float *Float) Type() ObjectType { return FLOAT_OBJ }
-func (float *Float) Inspect() string  { return fmt.Sprintf("%f", float.Value) }
-func (float *Float) HashKey() HashKey {
-	return HashKey{Type: float.Type(), Value: uint64(float.Value)}
+func (f *Float) Type() ObjectType { return FLOAT_OBJ }
+func (f *Float) Inspect() string {
+	// Remove trailing zeros and unnecessary decimal point
+	str := fmt.Sprintf("%.10f", f.Value)
+	str = strings.TrimRight(str, "0")
+	str = strings.TrimRight(str, ".")
+	return str
+}
+func (f *Float) HashKey() HashKey {
+	return HashKey{Type: f.Type(), Value: uint64(f.Value)}
 }
 
 type Boolean struct {
@@ -139,7 +145,9 @@ func (s *String) HashKey() HashKey {
 }
 
 type Builtin struct {
-	Fn BuiltinFunction
+	Fn        BuiltinFunction
+	Class     string
+	Attributes map[string]Object
 }
 
 func (b *Builtin) Type() ObjectType { return BUILTIN_OBJ }

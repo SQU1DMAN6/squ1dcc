@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
 	"squ1d++/object"
@@ -14,6 +15,61 @@ import (
 )
 
 const PROMPT = ">> "
+const CONTINUATION_PROMPT = "==>  "
+
+// readCompleteInput reads input until a complete statement is entered
+func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
+	var input strings.Builder
+	
+	scanned := scanner.Scan()
+	if !scanned {
+		return ""
+	}
+	
+	line := scanner.Text()
+	input.WriteString(line)
+	
+	// Check if we need to continue reading (unmatched braces, parentheses, etc.)
+	for needsContinuation(input.String()) {
+		fmt.Fprintf(out, CONTINUATION_PROMPT)
+		scanned := scanner.Scan()
+		if !scanned {
+			break
+		}
+		line = scanner.Text()
+		input.WriteString("\n")
+		input.WriteString(line)
+	}
+	
+	return input.String()
+}
+
+// needsContinuation checks if the input needs continuation based on unmatched delimiters
+func needsContinuation(line string) bool {
+	openBraces := 0
+	openParens := 0
+	openBrackets := 0
+	
+	for _, char := range line {
+		switch char {
+		case '{':
+			openBraces++
+		case '}':
+			openBraces--
+		case '(':
+			openParens++
+		case ')':
+			openParens--
+		case '[':
+			openBrackets++
+		case ']':
+			openBrackets--
+		}
+	}
+	
+	// Continue if we have unmatched delimiters
+	return openBraces > 0 || openParens > 0 || openBrackets > 0
+}
 
 func Start(in io.Reader, out io.Writer) {
 	// env := object.NewEnvironment()
@@ -28,17 +84,26 @@ func Start(in io.Reader, out io.Writer) {
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
+	
+	// Add class objects to globals
+	classes := object.CreateClassObjects()
+	builtinCount := len(object.Builtins)
+	for className, classObj := range classes {
+		symbolTable.DefineBuiltin(builtinCount, className)
+		globals[builtinCount] = classObj
+		builtinCount++
+	}
 
 	for {
 		fmt.Fprintf(out, PROMPT)
-		scanned := scanner.Scan()
-
-		if !scanned {
+		
+		// Read complete input (handling multi-line statements)
+		input := readCompleteInput(scanner, out)
+		if input == "" {
 			return
 		}
 
-		line := scanner.Text()
-		l := lexer.New(line)
+		l := lexer.New(input)
 		p := parser.New(l)
 
 		program := p.ParseProgram()
@@ -74,7 +139,7 @@ func Start(in io.Reader, out io.Writer) {
 }
 
 func printParserErrors(out io.Writer, errors []string) {
-	io.WriteString(out, "ERROR:\n\t")
+	io.WriteString(out, "ERROR:\n\t\t\n")
 	for _, msg := range errors {
 		io.WriteString(out, "\t"+msg+"\n")
 	}
@@ -83,14 +148,14 @@ func printParserErrors(out io.Writer, errors []string) {
 func ExecuteFile(filename string, out io.Writer) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("could not open file %s: %v", filename, err)
+		return fmt.Errorf("Could not open file %s: %v", filename, err)
 	}
 	defer file.Close()
 
 	// Read the entire file content
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return fmt.Errorf("could not read file %s: %v", filename, err)
+		return fmt.Errorf("Could not read file %s: %v", filename, err)
 	}
 
 	// Create a new VM state for file execution
@@ -100,40 +165,115 @@ func ExecuteFile(filename string, out io.Writer) error {
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
-
-	// Parse and execute the file content as one program
-	l := lexer.New(string(content))
-	p := parser.New(l)
-
-	program := p.ParseProgram()
-	if len(p.Errors()) != 0 {
-		printParserErrors(out, p.Errors())
-		return fmt.Errorf("parsing errors in file %s", filename)
+	
+	// Add class objects to globals
+	classes := object.CreateClassObjects()
+	builtinCount := len(object.Builtins)
+	for className, classObj := range classes {
+		symbolTable.DefineBuiltin(builtinCount, className)
+		globals[builtinCount] = classObj
+		builtinCount++
 	}
 
-	comp := compiler.NewWithState(symbolTable, constants)
-	err = comp.Compile(program)
-	if err != nil {
-		fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
-		return fmt.Errorf("compilation error in file %s: %v", filename, err)
+	// Process the file content line by line to capture all outputs
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	var currentInput strings.Builder
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		
+		// Skip empty lines (whitespace is ignored)
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
+		
+		currentInput.WriteString(line)
+		
+		// Check if we have a complete statement
+		if !needsContinuation(currentInput.String()) {
+			// We have a complete statement, execute it
+			input := currentInput.String()
+			currentInput.Reset()
+			
+			l := lexer.New(input)
+			p := parser.New(l)
+
+			program := p.ParseProgram()
+			if len(p.Errors()) != 0 {
+				printParserErrors(out, p.Errors())
+				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
+			}
+
+			comp := compiler.NewWithState(symbolTable, constants)
+			err := comp.Compile(program)
+			if err != nil {
+				fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
+				return fmt.Errorf("In file %s:\t%v\n", filename, err)
+			}
+
+			code := comp.Bytecode()
+			constants = code.Constants
+
+			machine := vm.NewWithGlobalsStore(code, globals)
+
+			err = machine.Run()
+			if err != nil {
+				fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
+				return fmt.Errorf("Runtime error in file %s:\t%v\n", filename, err)
+			}
+
+			// Print the result of this statement
+			lastPopped := machine.LastPoppedStackElem()
+			if lastPopped != nil {
+				io.WriteString(out, lastPopped.Inspect())
+				io.WriteString(out, "\n")
+			}
+		} else {
+			// Need more input for this statement, add a newline
+			currentInput.WriteString("\n")
+		}
 	}
 
-	code := comp.Bytecode()
-	constants = code.Constants
-
-	machine := vm.NewWithGlobalsStore(code, globals)
-
-	err = machine.Run()
-	if err != nil {
-		fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
-		return fmt.Errorf("runtime error in file %s: %v", filename, err)
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("Error reading file %s: %v", filename, err)
 	}
 
-	// Print the last popped element if it exists
-	lastPopped := machine.LastPoppedStackElem()
-	if lastPopped != nil {
-		io.WriteString(out, lastPopped.Inspect())
-		io.WriteString(out, "\n")
+	// Handle any remaining input
+	if currentInput.Len() > 0 {
+		input := currentInput.String()
+		l := lexer.New(input)
+		p := parser.New(l)
+
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			printParserErrors(out, p.Errors())
+			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
+		}
+
+		comp := compiler.NewWithState(symbolTable, constants)
+		err := comp.Compile(program)
+		if err != nil {
+			fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
+			return fmt.Errorf("In file %s: %v", filename, err)
+		}
+
+		code := comp.Bytecode()
+		constants = code.Constants
+
+		machine := vm.NewWithGlobalsStore(code, globals)
+
+		err = machine.Run()
+		if err != nil {
+			fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
+			return fmt.Errorf("Runtime error in file %s: %v", filename, err)
+		}
+
+		// Print the result of this statement
+		lastPopped := machine.LastPoppedStackElem()
+		if lastPopped != nil {
+			io.WriteString(out, lastPopped.Inspect())
+			io.WriteString(out, "\n")
+		}
 	}
 
 	return nil

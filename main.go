@@ -16,7 +16,7 @@ func main() {
 		panic(err)
 	}
 
-	compileFlag := flag.Bool("compile", false, "Compile .sqd file to executable")
+	compileFlag := flag.Bool("B", false, "Build .sqd file to executable")
 	outputFlag := flag.String("o", "", "Output executable name (default: same as input file)")
 	flag.Parse()
 
@@ -25,7 +25,7 @@ func main() {
 	if *compileFlag {
 		if len(args) == 0 {
 			fmt.Fprintf(os.Stderr, "Error: No input file specified for compilation\n")
-			fmt.Fprintf(os.Stderr, "Usage: %s -compile <input.sqd> [-o output]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Usage: %s -B <input.sqd> [-o output]\n", os.Args[0])
 			os.Exit(1)
 		}
 		

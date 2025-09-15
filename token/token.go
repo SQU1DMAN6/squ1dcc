@@ -34,6 +34,7 @@ const (
 	RETURN    = "RETURN"
 	TRUE      = "TRUE"
 	FALSE     = "FALSE"
+	NULL      = "NULL"
 	IF        = "IF"
 	ELSE      = "ELSE"
 	ELIF      = "ELIF"
@@ -44,6 +45,8 @@ const (
 	LBRACKET  = "["
 	RBRACKET  = "]"
 	COLON     = ":"
+	DOT       = "."
+	COMMENT   = "COMMENT"
 )
 
 var keywords = map[string]TokenType{
@@ -51,6 +54,7 @@ var keywords = map[string]TokenType{
 	"var":    LET,
 	"true":   TRUE,
 	"false":  FALSE,
+	"null":   NULL,
 	"if":     IF,
 	"el":     ELSE,
 	"elif":   ELIF,

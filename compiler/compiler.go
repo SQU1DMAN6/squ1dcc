@@ -386,6 +386,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpFalse)
 		}
 
+	case *ast.Null:
+		c.emit(code.OpNull)
+
 	case *ast.ArrayLiteral:
 		for _, el := range node.Elements {
 			err := c.Compile(el)
@@ -430,6 +433,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		c.emit(code.OpIndex)
+
+	case *ast.DotExpression:
+		err := c.Compile(node.Left)
+		if err != nil {
+			return err
+		}
+
+		err = c.Compile(node.Right)
+		if err != nil {
+			return err
+		}
+
+		c.emit(code.OpDot)
 
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)

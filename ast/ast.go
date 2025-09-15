@@ -178,6 +178,26 @@ func (ie *IndexExpression) String() string {
 	return out.String()
 }
 
+type DotExpression struct {
+	Token token.Token
+	Left  Expression
+	Right Expression
+}
+
+func (de *DotExpression) expressionNode()      {}
+func (de *DotExpression) TokenLiteral() string { return de.Token.Literal }
+func (de *DotExpression) String() string {
+	var out bytes.Buffer
+
+	out.WriteString("(")
+	out.WriteString(de.Left.String())
+	out.WriteString(".")
+	out.WriteString(de.Right.String())
+	out.WriteString(")")
+
+	return out.String()
+}
+
 type HashLiteral struct {
 	Token token.Token
 	Pairs map[Expression]Expression
@@ -266,6 +286,14 @@ type Boolean struct {
 func (b *Boolean) expressionNode()      {}
 func (b *Boolean) TokenLiteral() string { return b.Token.Literal }
 func (b *Boolean) String() string       { return b.Token.Literal }
+
+type Null struct {
+	Token token.Token
+}
+
+func (n *Null) expressionNode()      {}
+func (n *Null) TokenLiteral() string { return n.Token.Literal }
+func (n *Null) String() string       { return n.Token.Literal }
 
 type IfExpression struct {
 	Token       token.Token

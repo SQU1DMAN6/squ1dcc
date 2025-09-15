@@ -22,6 +22,7 @@ type VM struct {
 	globals     []object.Object
 	frames      []*Frame
 	framesIndex int
+	lastOpcode  code.Opcode
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -39,6 +40,7 @@ func New(bytecode *compiler.Bytecode) *VM {
 		globals:     make([]object.Object, GlobalsSize),
 		frames:      frames,
 		framesIndex: 1,
+		lastOpcode:  code.OpConstant, // Initialize with a safe default
 	}
 }
 
@@ -60,6 +62,7 @@ func (vm *VM) Run() error {
 		ins = vm.currentFrame().Instructions()
 
 		op = code.Opcode(ins[ip])
+		vm.lastOpcode = op
 
 		switch op {
 		case code.OpConstant:
@@ -150,6 +153,15 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpDot:
+			right := vm.pop()
+			left := vm.pop()
+
+			err := vm.executeDotExpression(left, right)
+			if err != nil {
+				return err
+			}
+
 		case code.OpJump:
 			pos := int(code.ReadUint16(ins[ip+1:]))
 			vm.currentFrame().ip = pos - 1
@@ -212,11 +224,30 @@ func (vm *VM) Run() error {
 			builtinIndex := code.ReadUint8(ins[ip+1:])
 			vm.currentFrame().ip += 1
 
-			definition := object.Builtins[builtinIndex]
-
-			err := vm.push(definition.Builtin)
-			if err != nil {
-				return err
+			if int(builtinIndex) < len(object.Builtins) {
+				definition := object.Builtins[builtinIndex]
+				err := vm.push(definition.Builtin)
+				if err != nil {
+					return err
+				}
+			} else {
+				// Handle class objects
+				classIndex := int(builtinIndex) - len(object.Builtins)
+				classes := object.CreateClassObjects()
+				classNames := []string{"time", "os", "math"}
+				if classIndex < len(classNames) {
+					className := classNames[classIndex]
+					if classObj, ok := classes[className]; ok {
+						err := vm.push(classObj)
+						if err != nil {
+							return err
+						}
+					} else {
+						return fmt.Errorf("Class object not found: %s", className)
+					}
+				} else {
+					return fmt.Errorf("Builtin index out of range: %d", builtinIndex)
+				}
 			}
 
 		case code.OpCall:
@@ -267,7 +298,9 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpPop:
-			vm.pop()
+			if vm.sp > 0 {
+				vm.pop()
+			}
 		}
 	}
 
@@ -486,6 +519,15 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 	}
 }
 
+func (vm *VM) executeDotExpression(left, right object.Object) error {
+	switch {
+	case left.Type() == object.HASH_OBJ:
+		return vm.executeHashDot(left, right)
+	default:
+		return fmt.Errorf("Dot operator not supported: %s", left.Type())
+	}
+}
+
 func (vm *VM) executeArrayIndex(array, index object.Object) error {
 	arrayObject := array.(*object.Array)
 	i := index.(*object.Integer).Value
@@ -507,6 +549,42 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 	}
 
 	pair, ok := hashObject.Pairs[key.HashKey()]
+	if !ok {
+		return vm.push(Null)
+	}
+
+	return vm.push(pair.Value)
+}
+
+func (vm *VM) executeHashDot(hash, right object.Object) error {
+	hashObject := hash.(*object.Hash)
+
+	// For dot notation, the right side should be an identifier (string)
+	// But it might be a builtin function, so we need to handle both cases
+	var keyName string
+	
+	switch right := right.(type) {
+	case *object.String:
+		keyName = right.Value
+	case *object.Builtin:
+		// If it's a builtin, we need to find its name
+		// This is a bit tricky, but we can iterate through the hash to find it
+		for _, pair := range hashObject.Pairs {
+			if pair.Value == right {
+				keyName = pair.Key.(*object.String).Value
+				break
+			}
+		}
+		if keyName == "" {
+			return fmt.Errorf("Builtin function not found in class object")
+		}
+	default:
+		return fmt.Errorf("Dot operator requires string identifier or builtin function, got: %s", right.Type())
+	}
+
+	// Create a string key for the hash lookup
+	stringKey := &object.String{Value: keyName}
+	pair, ok := hashObject.Pairs[stringKey.HashKey()]
 	if !ok {
 		return vm.push(Null)
 	}
@@ -631,6 +709,10 @@ func (vm *VM) StackTop() object.Object {
 }
 
 func (vm *VM) LastPoppedStackElem() object.Object {
+	// Don't return values for variable assignments - they should be "pure" statements
+	if vm.lastOpcode == code.OpSetGlobal || vm.lastOpcode == code.OpSetLocal {
+		return nil
+	}
 	return vm.stack[vm.sp]
 }
 

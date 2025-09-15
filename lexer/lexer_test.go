@@ -139,3 +139,58 @@ if (5 < 10) {
 		}
 	}
 }
+
+func TestVariableNamesWithNumbers(t *testing.T) {
+	input := `var var1 = 1;
+var var2 = 2;
+var test123 = 123;
+var my_var_456 = 456;
+var a1b2c3 = 789;
+`
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.LET, "var"},
+		{token.IDENT, "var1"},
+		{token.ASSIGN, "="},
+		{token.INT, "1"},
+		{token.SEMICOLON, ";"},
+		{token.LET, "var"},
+		{token.IDENT, "var2"},
+		{token.ASSIGN, "="},
+		{token.INT, "2"},
+		{token.SEMICOLON, ";"},
+		{token.LET, "var"},
+		{token.IDENT, "test123"},
+		{token.ASSIGN, "="},
+		{token.INT, "123"},
+		{token.SEMICOLON, ";"},
+		{token.LET, "var"},
+		{token.IDENT, "my_var_456"},
+		{token.ASSIGN, "="},
+		{token.INT, "456"},
+		{token.SEMICOLON, ";"},
+		{token.LET, "var"},
+		{token.IDENT, "a1b2c3"},
+		{token.ASSIGN, "="},
+		{token.INT, "789"},
+		{token.SEMICOLON, ";"},
+		{token.EOF, ""},
+	}
+
+	l := New(input)
+
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("Tests[%d] - Tokentype wrong. Expected %q, got %q",
+				i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("Tests[%d] - Literal wrong. Expected %q, got %q",
+				i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}

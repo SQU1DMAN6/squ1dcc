@@ -1,8 +1,9 @@
-# SQU1D++ Programming Language
+# SQU1DLang Programming Language
 
-SQU1D++ is a dynamically-typed programming language with a clean, minimal syntax. This document provides a comprehensive guide to the language's syntax and features.
+SQU1DLang is a dynamic programming language with a clean syntax. This document provides a comprehensive guide to the language's syntax and features.
 
 ## Table of Contents
+
 - [Basic Syntax](#basic-syntax)
 - [Data Types](#data-types)
 - [Variables](#variables)
@@ -15,19 +16,22 @@ SQU1D++ is a dynamically-typed programming language with a clean, minimal syntax
 
 ## Basic Syntax
 
-SQU1D++ uses a simple, expression-based syntax with minimal punctuation requirements.
+SQU1DLang uses a simple, expression-based syntax where functions are key.
 
-### Comments
-Currently, SQU1D++ does not support comments.
+## Comments
+
+Comments in SQU1DLang use the hash sign (`#`), and can be terminated with another hash sign.
 
 ### Statement Termination
+
 Statements can be terminated with semicolons (`;`), but they are optional in many contexts.
 
 ## Data Types
 
-SQU1D++ supports the following primitive data types:
+SQU1DLang supports the following primitive data types:
 
 ### Integers
+
 ```squ1d
 42
 -17
@@ -35,19 +39,21 @@ SQU1D++ supports the following primitive data types:
 ```
 
 ### Booleans
+
 ```squ1d
 true
 false
 ```
 
 ### Strings
+
 ```squ1d
 "Hello, World!"
 ""
-"Multi-word string"
 ```
 
 ### Null
+
 ```squ1d
 null
 ```
@@ -62,25 +68,28 @@ var name = "SQU1D++";
 var isActive = true;
 ```
 
-Variable names must start with a letter or underscore and can contain letters, numbers, and underscores.
+Variable names must start with a letter or underscore and can contain letters, digits, and underscores.
 
 ## Functions
 
 ### Function Declaration
-Functions are declared using the `def` keyword:
+
+Functions are declared using the `def` keyword, and may be assigned to a variable:
 
 ```squ1d
-def add(x, y) {
+def(x, y) {
     return x + y;
 }
 ```
 
 ### Function Calls
+
 ```squ1d
 var result = add(5, 3);
 ```
 
 ### Anonymous Functions
+
 ```squ1d
 def(x, y) {
     return x * y;
@@ -88,6 +97,7 @@ def(x, y) {
 ```
 
 ### Higher-Order Functions
+
 Functions are first-class objects and can be passed as arguments:
 
 ```squ1d
@@ -101,6 +111,7 @@ var result = apply(add, 10, 20);
 ## Control Flow
 
 ### If-Else Statements
+
 ```squ1d
 if (x > 0) {
     write("Positive");
@@ -112,6 +123,7 @@ if (x > 0) {
 Note: The `else` keyword is shortened to `el` in SQU1D++.
 
 ### Conditional Expressions
+
 ```squ1d
 var message = if (x > 0) { "Positive" } el { "Negative" };
 ```
@@ -119,6 +131,7 @@ var message = if (x > 0) { "Positive" } el { "Negative" };
 ## Data Structures
 
 ### Arrays
+
 Arrays are created using square brackets:
 
 ```squ1d
@@ -128,12 +141,14 @@ var empty = [];
 ```
 
 ### Array Indexing
+
 ```squ1d
 var first = numbers[0];
 var last = numbers[4];
 ```
 
 ### Hash Maps (Objects)
+
 Hash maps are created using curly braces with key-value pairs:
 
 ```squ1d
@@ -145,6 +160,7 @@ var person = {
 ```
 
 ### Hash Map Access
+
 ```squ1d
 var name = person["name"];
 var age = person["age"];
@@ -155,35 +171,45 @@ var age = person["age"];
 SQU1D++ provides several built-in functions:
 
 ### `write(...args)`
+
 Prints values to the console:
+
 ```squ1d
 write("Hello, World!");
 write("Value:", 42);
 ```
 
 ### `read([prompt])`
+
 Reads input from the user:
+
 ```squ1d
 var input = read();
 var name = read("Enter your name: ");
 ```
 
 ### `cat(value)`
+
 Returns the length of a string or array:
+
 ```squ1d
 var len = cat("hello");        // Returns 5
 var count = cat([1, 2, 3]);    // Returns 3
 ```
 
 ### `append(array, value)`
+
 Adds an element to the end of an array:
+
 ```squ1d
 var numbers = [1, 2, 3];
 var extended = append(numbers, 4);  // Returns [1, 2, 3, 4]
 ```
 
 ### `tp(value)`
+
 Returns the type of a value as a string:
+
 ```squ1d
 tp(42);        // Returns "Integer"
 tp("hello");   // Returns "String"
@@ -195,6 +221,7 @@ tp(true);      // Returns "Boolean"
 ## Operators
 
 ### Arithmetic Operators
+
 ```squ1d
 +   // Addition
 -   // Subtraction
@@ -203,6 +230,7 @@ tp(true);      // Returns "Boolean"
 ```
 
 ### Comparison Operators
+
 ```squ1d
 ==  // Equal to
 !=  // Not equal to
@@ -211,16 +239,19 @@ tp(true);      // Returns "Boolean"
 ```
 
 ### Logical Operators
+
 ```squ1d
 !   // Logical NOT
 ```
 
 ### String Concatenation
+
 ```squ1d
 var greeting = "Hello" + " " + "World";
 ```
 
 ### Array Processing
+
 ```squ1d
 def sumArray(arr) {
     var total = 0;
@@ -238,6 +269,7 @@ write("Sum:", total);
 ```
 
 ### Hash Map Example
+
 ```squ1d
 var student = {
     "name": "John",
@@ -250,6 +282,7 @@ write("Average grade: ", student["grades"][0]);
 ```
 
 ### Interactive Program
+
 ```squ1d
 write("Welcome to SQU1D++ Calculator!");
 var num1 = read("Enter first number: ");
@@ -269,6 +302,7 @@ write("The sum is: ", sum);
 ## Getting Started
 
 To run SQU1D++ code, use the REPL:
+
 ```bash
 go run .
 ```
@@ -277,4 +311,4 @@ This will start an interactive session where you can type SQU1D++ code and see t
 
 ---
 
-*SQU1D++ Compiler, version 0.5, written by Quan Thai.*
+_SQU1D++ Compiler, version 0.5, written by Quan Thai._

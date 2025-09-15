@@ -38,6 +38,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return val
 		}
 		env.Set(node.Name.Value, val)
+		return nil
 
 	// Expressions
 	case *ast.IntegerLiteral:
@@ -48,6 +49,9 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
+
+	case *ast.Null:
+		return NULL
 
 	case *ast.PrefixExpression:
 		right := Eval(node.Right, env)
@@ -113,6 +117,9 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 	case *ast.HashLiteral:
 		return evalHashLiteral(node, env)
+
+	case *ast.DotExpression:
+		return evalDotExpression(node, env)
 
 	}
 
@@ -288,7 +295,8 @@ func evalIdentifier(
 		return val
 	}
 
-	if builtin, ok := builtins[node.Value]; ok {
+	// Check for builtin (both direct and namespaced)
+	if builtin, ok := GetBuiltin(node.Value); ok {
 		return builtin
 	}
 
@@ -442,4 +450,69 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 	}
 
 	return pair.Value
+}
+
+func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.Object {
+	left := Eval(node.Left, env)
+	if isError(left) {
+		return left
+	}
+
+	// Handle builtin access like math.abs, time.sleep, etc.
+	if left.Type() == object.HASH_OBJ {
+		hash := left.(*object.Hash)
+		
+		// Get the right side (should be an identifier or string)
+		var key string
+		switch right := node.Right.(type) {
+		case *ast.Identifier:
+			key = right.Value
+		case *ast.StringLiteral:
+			key = right.Value
+		default:
+			return newError("Expected identifier or string after dot, got %T", right)
+		}
+
+		// Look for the key in the hash
+		keyObj := &object.String{Value: key}
+		if pair, ok := hash.Pairs[keyObj.HashKey()]; ok {
+			return pair.Value
+		}
+		
+		// If not found in hash, try to find it as a builtin
+		// Construct the full name like "math.abs"
+		if leftStr, ok := left.(*object.String); ok {
+			fullName := leftStr.Value + "." + key
+			if builtin, ok := GetBuiltin(fullName); ok {
+				return builtin
+			}
+		}
+		
+		return newError("Property '%s' not found", key)
+	}
+
+	// Handle direct builtin access like math.abs
+	if left.Type() == object.STRING_OBJ {
+		leftStr := left.(*object.String).Value
+		
+		// Get the right side
+		var key string
+		switch right := node.Right.(type) {
+		case *ast.Identifier:
+			key = right.Value
+		case *ast.StringLiteral:
+			key = right.Value
+		default:
+			return newError("Expected identifier or string after dot, got %T", right)
+		}
+
+		fullName := leftStr + "." + key
+		if builtin, ok := GetBuiltin(fullName); ok {
+			return builtin
+		}
+		
+		return newError("Builtin '%s' not found", fullName)
+	}
+
+	return newError("Dot operator not supported for type %s", left.Type())
 }

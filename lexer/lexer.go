@@ -115,6 +115,11 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.RBRACKET, l.ch)
 	case ':':
 		tok = newToken(token.COLON, l.ch)
+	case '.':
+		tok = newToken(token.DOT, l.ch)
+	case '#':
+		l.skipComment()
+		return l.NextToken()
 	case 0:
 		tok.Literal = ""
 		tok.Type = token.EOF
@@ -130,7 +135,7 @@ func newToken(tokenType token.TokenType, ch byte) token.Token {
 
 func (l *Lexer) readIdentifier() string {
 	position := l.position
-	for isLetter(l.ch) {
+	for isLetter(l.ch) || isDigit(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]
@@ -183,14 +188,25 @@ func isFloatChar(ch byte) bool {
 	return ('0' <= ch && ch <= '9') || ch == '.' || ch == '-' || ch == '\''
 }
 
-func isDP(ch byte) bool {
-	return ch == '.'
-}
-
 func (l *Lexer) peekChar() byte {
 	if l.readPosition >= len(l.input) {
 		return 0
 	} else {
 		return l.input[l.readPosition]
+	}
+}
+
+func (l *Lexer) skipComment() {
+	// Skip the opening #
+	l.readChar()
+	
+	// Read until we find the closing # or end of input
+	for l.ch != 0 && l.ch != '#' {
+		l.readChar()
+	}
+	
+	// If we found a closing #, skip it too
+	if l.ch == '#' {
+		l.readChar()
 	}
 }

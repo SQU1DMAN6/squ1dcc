@@ -16,6 +16,7 @@ const (
 	SUM
 	PRODUCT
 	PREFIX
+	DOT
 	CALL
 	INDEX
 )
@@ -39,6 +40,7 @@ var precedences = map[token.TokenType]int{
 	token.ASTERISK: PRODUCT,
 	token.MODULO:   PRODUCT,
 	token.LPAREN:   CALL,
+	token.DOT:      DOT,
 	token.LBRACKET: INDEX,
 }
 
@@ -102,10 +104,12 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.GE, p.parseInfixExpression)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
+	p.registerPrefix(token.NULL, p.parseNull)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.FUNCTION, p.parseFunctionLiteral)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
+	p.registerInfix(token.DOT, p.parseDotExpression)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
@@ -151,6 +155,27 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 	if !p.expectPeek(token.RBRACKET) {
 		return nil
 	}
+	return exp
+}
+
+func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
+	exp := &ast.DotExpression{Token: p.curToken, Left: left}
+	p.nextToken()
+	
+	// If the right side is an identifier, convert it to a string literal
+	if p.curToken.Type == token.IDENT {
+		// Create a string literal from the identifier
+		stringToken := token.Token{
+			Type:    token.STRING,
+			Literal: p.curToken.Literal,
+		}
+		stringLiteral := &ast.StringLiteral{Token: stringToken, Value: p.curToken.Literal}
+		exp.Right = stringLiteral
+		// Don't call p.nextToken() here - let the caller handle it
+	} else {
+		exp.Right = p.parseExpression(DOT)
+	}
+	
 	return exp
 }
 
@@ -323,6 +348,10 @@ func (p *Parser) parseCallArguments() []ast.Expression {
 
 func (p *Parser) parseBoolean() ast.Expression {
 	return &ast.Boolean{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
+}
+
+func (p *Parser) parseNull() ast.Expression {
+	return &ast.Null{Token: p.curToken}
 }
 
 func (p *Parser) parseIdentifier() ast.Expression {
