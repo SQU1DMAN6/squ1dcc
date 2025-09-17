@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 	"squ1d++/code"
 	"squ1d++/compiler"
 	"squ1d++/object"
@@ -234,7 +235,7 @@ func (vm *VM) Run() error {
 				// Handle class objects
 				classIndex := int(builtinIndex) - len(object.Builtins)
 				classes := object.CreateClassObjects()
-				classNames := []string{"time", "os", "math"}
+				classNames := []string{"time", "os", "math", "string"}
 				if classIndex < len(classNames) {
 					className := classNames[classIndex]
 					if classObj, ok := classes[className]; ok {
@@ -319,6 +320,14 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 		return vm.executeBinaryIntegerOperation(op, left, right)
 	case leftType == object.FLOAT_OBJ && rightType == object.FLOAT_OBJ:
 		return vm.executeBinaryFloatOperation(op, left, right)
+	case leftType == object.INTEGER_OBJ && rightType == object.FLOAT_OBJ:
+		// Convert integer to float and perform float operation
+		leftFloat := &object.Float{Value: float64(left.(*object.Integer).Value)}
+		return vm.executeBinaryFloatOperation(op, leftFloat, right)
+	case leftType == object.FLOAT_OBJ && rightType == object.INTEGER_OBJ:
+		// Convert integer to float and perform float operation
+		rightFloat := &object.Float{Value: float64(right.(*object.Integer).Value)}
+		return vm.executeBinaryFloatOperation(op, left, rightFloat)
 	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
 		return vm.executeBinaryStringOperation(op, left, right)
 	default:
@@ -368,7 +377,16 @@ func (vm *VM) executeBinaryIntegerOperation(
 		result = leftValue * rightValue
 
 	case code.OpDiv:
+		if rightValue == 0 {
+			return fmt.Errorf("Division by zero")
+		}
 		result = leftValue / rightValue
+
+	case code.OpMod:
+		if rightValue == 0 {
+			return fmt.Errorf("Modulo by zero")
+		}
+		result = leftValue % rightValue
 
 	default:
 		return fmt.Errorf("Unknown integer operator: %d", op)
@@ -394,7 +412,15 @@ func (vm *VM) executeBinaryFloatOperation(
 	case code.OpMul:
 		result = leftValue * rightValue
 	case code.OpDiv:
+		if rightValue == 0 {
+			return fmt.Errorf("Division by zero")
+		}
 		result = leftValue / rightValue
+	case code.OpMod:
+		if rightValue == 0 {
+			return fmt.Errorf("Modulo by zero")
+		}
+		result = math.Mod(leftValue, rightValue)
 	default:
 		return fmt.Errorf("Unknown float operation: %d", op)
 	}
@@ -559,27 +585,14 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 func (vm *VM) executeHashDot(hash, right object.Object) error {
 	hashObject := hash.(*object.Hash)
 
-	// For dot notation, the right side should be an identifier (string)
-	// But it might be a builtin function, so we need to handle both cases
+	// For dot notation, the right side should be a string identifier
 	var keyName string
 	
 	switch right := right.(type) {
 	case *object.String:
 		keyName = right.Value
-	case *object.Builtin:
-		// If it's a builtin, we need to find its name
-		// This is a bit tricky, but we can iterate through the hash to find it
-		for _, pair := range hashObject.Pairs {
-			if pair.Value == right {
-				keyName = pair.Key.(*object.String).Value
-				break
-			}
-		}
-		if keyName == "" {
-			return fmt.Errorf("Builtin function not found in class object")
-		}
 	default:
-		return fmt.Errorf("Dot operator requires string identifier or builtin function, got: %s", right.Type())
+		return fmt.Errorf("Dot operator requires string identifier, got: %s", right.Type())
 	}
 
 	// Create a string key for the hash lookup

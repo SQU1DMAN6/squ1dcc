@@ -88,10 +88,14 @@ func Start(in io.Reader, out io.Writer) {
 	// Add class objects to globals
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
-	for className, classObj := range classes {
-		symbolTable.DefineBuiltin(builtinCount, className)
-		globals[builtinCount] = classObj
-		builtinCount++
+	// Use the same order as the VM expects
+	classNames := []string{"time", "os", "math", "string"}
+	for _, className := range classNames {
+		if classObj, ok := classes[className]; ok {
+			symbolTable.DefineBuiltin(builtinCount, className)
+			globals[builtinCount] = classObj
+			builtinCount++
+		}
 	}
 
 	for {
@@ -169,10 +173,14 @@ func ExecuteFile(filename string, out io.Writer) error {
 	// Add class objects to globals
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
-	for className, classObj := range classes {
-		symbolTable.DefineBuiltin(builtinCount, className)
-		globals[builtinCount] = classObj
-		builtinCount++
+	// Use the same order as the VM expects
+	classNames := []string{"time", "os", "math", "string"}
+	for _, className := range classNames {
+		if classObj, ok := classes[className]; ok {
+			symbolTable.DefineBuiltin(builtinCount, className)
+			globals[builtinCount] = classObj
+			builtinCount++
+		}
 	}
 
 	// Process the file content line by line to capture all outputs

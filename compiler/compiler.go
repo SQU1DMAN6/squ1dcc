@@ -453,6 +453,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("Undefined variable %s", node.Value)
 		}
 
+		// Check if this is a class-based builtin being accessed directly
+		if symbol.Scope == BuiltinScope {
+			// Find the builtin definition to check if it has a class
+			for _, def := range object.Builtins {
+				if def.Name == node.Value && def.Builtin.Class != "" {
+					return fmt.Errorf("Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Value, def.Builtin.Class, node.Value)
+				}
+			}
+		}
+
 		c.loadSymbol(symbol)
 
 		// if symbol.Scope == GlobalScope {

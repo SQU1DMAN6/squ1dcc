@@ -5,20 +5,17 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Helper function to create builtins with attributes
-func createBuiltin(fn BuiltinFunction, class string, attributes map[string]Object) *Builtin {
-	if attributes == nil {
-		attributes = make(map[string]Object)
-	}
+func createBuiltin(fn BuiltinFunction, class string) *Builtin {
 	return &Builtin{
 		Fn:         fn,
 		Class:      class,
-		Attributes: attributes,
+		Attributes: make(map[string]Object),
 	}
 }
 
@@ -42,10 +39,7 @@ var Builtins = []struct {
 			default:
 				return newError("Argument 0 to `cat` is not supported, got %s", args[0].Type())
 			}
-		}, "", map[string]Object{
-			"description": &String{Value: "Returns the length of an array or string"},
-			"usage":       &String{Value: "cat(array_or_string)"},
-		}),
+		}, ""),
 	},
 	{
 		"tp",
@@ -74,10 +68,7 @@ var Builtins = []struct {
 			default:
 				return &String{Value: "Null"}
 			}
-		}, "", map[string]Object{
-			"description": &String{Value: "Returns the type of an object"},
-			"usage":       &String{Value: "tp(object)"},
-		}),
+		}, ""),
 	},
 	{
 		"append",
@@ -97,10 +88,7 @@ var Builtins = []struct {
 			newElements[length] = args[1]
 
 			return &Array{Elements: newElements}
-		}, "", map[string]Object{
-			"description": &String{Value: "Appends an element to an array"},
-			"usage":       &String{Value: "append(array, element)"},
-		}),
+		}, ""),
 	},
 
 	// Base builtins (no attributes)
@@ -137,7 +125,7 @@ var Builtins = []struct {
 			}
 
 			return value
-		}, "", nil),
+		}, ""),
 	},
 	{
 		"write",
@@ -148,7 +136,7 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: strings.Join(elements, "")}
-		}, "", nil),
+		}, ""),
 	},
 	{
 		"null",
@@ -157,14 +145,13 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
 			}
 			return &Null{}
-		}, "", nil),
+		}, ""),
 	},
 	// OS Builtins
 	{
 		"env",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) == 0 {
-				// Return all environment variables as a hash
 				env := make(map[HashKey]HashPair)
 				for _, e := range os.Environ() {
 					parts := strings.SplitN(e, "=", 2)
@@ -176,7 +163,6 @@ var Builtins = []struct {
 				}
 				return &Hash{Pairs: env}
 			} else if len(args) == 1 {
-				// Get specific environment variable
 				key, ok := args[0].(*String)
 				if !ok {
 					return newError("Argument 0 to `env` must be STRING, got %s", args[0].Type())
@@ -189,10 +175,30 @@ var Builtins = []struct {
 			} else {
 				return newError("Wrong number of arguments. Expected 0 or 1, got %d", len(args))
 			}
-		}, "os", map[string]Object{
-			"description": &String{Value: "Gets environment variables"},
-			"usage":       &String{Value: "env() or env(variable_name)"},
-		}),
+		}, "os"),
+	},
+	{
+		"exec",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+			command, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `exec` must be STRING, got %s", args[0].Type())
+			}
+
+			seprcommand := strings.Split(command.Value, " ")
+
+			args_ := seprcommand[1:]
+
+			output, err := exec.Command(seprcommand[0], args_...).Output()
+			if err != nil {
+				return newError("Failed to execute command: %s", err)
+			}
+
+			return &String{Value: string(output)}
+		}, "os"),
 	},
 
 	// Time builtins
@@ -215,10 +221,7 @@ var Builtins = []struct {
 
 			time.Sleep(duration)
 			return &Integer{Value: 0}
-		}, "time", map[string]Object{
-			"description": &String{Value: "Sleeps for the specified number of milliseconds"},
-			"usage":       &String{Value: "sleep(milliseconds)"},
-		}),
+		}, "time"),
 	},
 	{
 		"now",
@@ -227,12 +230,8 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
 			}
 			return &Integer{Value: time.Now().UnixMilli()}
-		}, "time", map[string]Object{
-			"description": &String{Value: "Returns current time in milliseconds since epoch"},
-			"usage":       &String{Value: "now()"},
-		}),
+		}, "time"),
 	},
-
 	// Math builtins
 	{
 		"abs",
@@ -252,10 +251,7 @@ var Builtins = []struct {
 			default:
 				return newError("Argument 0 to `abs` must be INTEGER or FLOAT, got %s", args[0].Type())
 			}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns absolute value of a number"},
-			"usage":       &String{Value: "abs(number)"},
-		}),
+		}, "math"),
 	},
 	{
 		"sqrt",
@@ -279,10 +275,7 @@ var Builtins = []struct {
 			}
 
 			return &Float{Value: math.Sqrt(value)}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns square root of a number"},
-			"usage":       &String{Value: "sqrt(number)"},
-		}),
+		}, "math"),
 	},
 	{
 		"pow",
@@ -312,10 +305,7 @@ var Builtins = []struct {
 			}
 
 			return &Float{Value: math.Pow(base, exponent)}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns base raised to the power of exponent"},
-			"usage":       &String{Value: "pow(base, exponent)"},
-		}),
+		}, "math"),
 	},
 	{
 		"sin",
@@ -335,10 +325,7 @@ var Builtins = []struct {
 			}
 
 			return &Float{Value: math.Sin(value)}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns sine of a number (in radians)"},
-			"usage":       &String{Value: "sin(number)"},
-		}),
+		}, "math"),
 	},
 	{
 		"cos",
@@ -358,10 +345,7 @@ var Builtins = []struct {
 			}
 
 			return &Float{Value: math.Cos(value)}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns cosine of a number (in radians)"},
-			"usage":       &String{Value: "cos(number)"},
-		}),
+		}, "math"),
 	},
 	{
 		"pi",
@@ -370,10 +354,7 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
 			}
 			return &Float{Value: math.Pi}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns the mathematical constant π (pi)"},
-			"usage":       &String{Value: "pi()"},
-		}),
+		}, "math"),
 	},
 	{
 		"e",
@@ -382,10 +363,83 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
 			}
 			return &Float{Value: math.E}
-		}, "math", map[string]Object{
-			"description": &String{Value: "Returns the mathematical constant e"},
-			"usage":       &String{Value: "e()"},
-		}),
+		}, "math"),
+	},
+	{
+		"i2fl",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			int, ok := args[0].(*Integer)
+			if !ok {
+				return newError("Argument 0 to `i2fl` must be INTEGER, got %s", args[0].Type())
+			}
+
+			return &Float{Value: float64(int.Value)}
+		}, "math"),
+	},
+	{
+		"fl2i",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			fl, ok := args[0].(*Float)
+			if !ok {
+				return newError("Argument 0 to `fl2i` must be FLOAT, got %s", args[0].Type())
+			}
+
+			return &Integer{Value: int64(fl.Value)}
+		}, "math"),
+	},
+	// String builtins
+	{
+		"upper",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `upper` must be STRING, got %s", args[0].Type())
+			}
+
+			return &String{Value: strings.ToUpper(str.Value)}
+		}, "string"),
+	},
+	{
+		"lower",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `lower` must be STRING, got %s", args[0].Type())
+			}
+
+			return &String{Value: strings.ToLower(str.Value)}
+		}, "string"),
+	},
+	{
+		"trim",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `trim` must be STRING, got %s", args[0].Type())
+			}
+
+			return &String{Value: strings.TrimSpace(str.Value)}
+		}, "string"),
 	},
 }
 
@@ -403,16 +457,14 @@ func GetBuiltinByName(name string) *Builtin {
 	return nil
 }
 
-// Create class objects for dot notation access
 func CreateClassObjects() map[string]Object {
 	classes := make(map[string]Object)
 
-	// Create class objects with their functions as attributes
 	timeClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	osClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	mathClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	stringClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 
-	// Populate class objects with their functions
 	for _, def := range Builtins {
 		if def.Builtin.Class != "" {
 			funcName := &String{Value: def.Name}
@@ -425,6 +477,8 @@ func CreateClassObjects() map[string]Object {
 				osClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "math":
 				mathClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "string":
+				stringClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			}
 		}
 	}
@@ -432,6 +486,7 @@ func CreateClassObjects() map[string]Object {
 	classes["time"] = timeClass
 	classes["os"] = osClass
 	classes["math"] = mathClass
+	classes["string"] = stringClass
 
 	return classes
 }

@@ -202,8 +202,8 @@ var name = read("Enter your name: ");
 Returns the length of a string or array:
 
 ```squ1d
-var len = cat("hello");        // Returns 5
-var count = cat([1, 2, 3]);    // Returns 3
+var len = cat("hello");        # Returns 5
+var count = cat([1, 2, 3]);    # Returns 3
 ```
 
 ### `append(array, value)`
@@ -212,7 +212,7 @@ Adds an element to the end of an array:
 
 ```squ1d
 var numbers = [1, 2, 3];
-var extended = append(numbers, 4);  // Returns [1, 2, 3, 4]
+var extended = append(numbers, 4);  # Returns [1, 2, 3, 4]
 ```
 
 ### `tp(value)`
@@ -220,11 +220,11 @@ var extended = append(numbers, 4);  // Returns [1, 2, 3, 4]
 Returns the type of a value as a string:
 
 ```squ1d
-tp(42);        // Returns "Integer"
-tp("hello");   // Returns "String"
-tp([1, 2]);    // Returns "Array"
-tp({});        // Returns "Object"
-tp(true);      // Returns "Boolean"
+tp(42);        # Returns "Integer"
+tp("hello");   # Returns "String"
+tp([1, 2]);    # Returns "Array"
+tp({});        # Returns "Object"
+tp(true);      # Returns "Boolean"
 ```
 
 ## Operators
@@ -232,25 +232,25 @@ tp(true);      // Returns "Boolean"
 ### Arithmetic Operators
 
 ```squ1d
-+   // Addition
--   // Subtraction
-*   // Multiplication
-/   // Division
++   # Addition
+-   # Subtraction
+*   # Multiplication
+/   # Division
 ```
 
 ### Comparison Operators
 
 ```squ1d
-==  // Equal to
-!=  // Not equal to
-<   // Less than
->   // Greater than
+==  # Equal to
+!=  # Not equal to
+<   # Less than
+>   # Greater than
 ```
 
 ### Logical Operators
 
 ```squ1d
-!   // Logical NOT
+!   # Logical NOT
 ```
 
 ### String Concatenation

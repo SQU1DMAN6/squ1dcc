@@ -40,6 +40,12 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.LookupIdent(tok.Literal)
 			return tok
 		} else if isDigit(l.ch) {
+			// Check if this is a float (has a dot)
+			if l.peekChar() == '.' {
+				tok.Type = token.FLOAT
+				tok.Literal = l.readFloat()
+				return tok
+			}
 			tok.Type = token.INT
 			tok.Literal = l.readNumber()
 			return tok
@@ -161,10 +167,22 @@ func (l *Lexer) readNumber() string {
 
 func (l *Lexer) readFloat() string {
 	position := l.position
-
-	for isFloatChar(l.ch) {
+	
+	// Read the integer part
+	for isDigit(l.ch) {
 		l.readChar()
 	}
+	
+	// Read the decimal point
+	if l.ch == '.' {
+		l.readChar()
+	}
+	
+	// Read the fractional part
+	for isDigit(l.ch) {
+		l.readChar()
+	}
+	
 	return l.input[position:l.position]
 }
 

@@ -295,9 +295,12 @@ func evalIdentifier(
 		return val
 	}
 
-	// Check for builtin (both direct and namespaced)
 	if builtin, ok := GetBuiltin(node.Value); ok {
-		return builtin
+		// Only allow direct access if the builtin has no class
+		if builtin.Class == "" {
+			return builtin
+		}
+		return newError("Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Value, builtin.Class, node.Value)
 	}
 
 	return newError("Identifier not found: %s", node.Value)
@@ -461,7 +464,7 @@ func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.
 	// Handle builtin access like math.abs, time.sleep, etc.
 	if left.Type() == object.HASH_OBJ {
 		hash := left.(*object.Hash)
-		
+
 		// Get the right side (should be an identifier or string)
 		var key string
 		switch right := node.Right.(type) {
@@ -478,7 +481,7 @@ func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.
 		if pair, ok := hash.Pairs[keyObj.HashKey()]; ok {
 			return pair.Value
 		}
-		
+
 		// If not found in hash, try to find it as a builtin
 		// Construct the full name like "math.abs"
 		if leftStr, ok := left.(*object.String); ok {
@@ -487,14 +490,14 @@ func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.
 				return builtin
 			}
 		}
-		
+
 		return newError("Property '%s' not found", key)
 	}
 
 	// Handle direct builtin access like math.abs
 	if left.Type() == object.STRING_OBJ {
 		leftStr := left.(*object.String).Value
-		
+
 		// Get the right side
 		var key string
 		switch right := node.Right.(type) {
@@ -510,7 +513,7 @@ func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.
 		if builtin, ok := GetBuiltin(fullName); ok {
 			return builtin
 		}
-		
+
 		return newError("Builtin '%s' not found", fullName)
 	}
 
