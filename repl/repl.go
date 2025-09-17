@@ -98,6 +98,7 @@ func Start(in io.Reader, out io.Writer) {
 		}
 	}
 
+
 	for {
 		fmt.Fprintf(out, PROMPT)
 		
@@ -105,6 +106,14 @@ func Start(in io.Reader, out io.Writer) {
 		input := readCompleteInput(scanner, out)
 		if input == "" {
 			return
+		}
+
+		// Simple include handling: include("path") or include("name")
+		if incPath, ok := tryParseInclude(input); ok {
+			if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+				fmt.Fprintf(out, "Include error: %v\n", err)
+			}
+			continue
 		}
 
 		l := lexer.New(input)
@@ -149,6 +158,72 @@ func printParserErrors(out io.Writer, errors []string) {
 	}
 }
 
+// tryParseInclude returns path if input is an include("path") single statement
+func tryParseInclude(input string) (string, bool) {
+    trimmed := strings.TrimSpace(input)
+    if !strings.HasPrefix(trimmed, "include(") || !strings.HasSuffix(trimmed, ")") {
+        return "", false
+    }
+    inside := strings.TrimSpace(trimmed[len("include(") : len(trimmed)-1])
+    if len(inside) >= 2 && ((inside[0] == '"' && inside[len(inside)-1] == '"') || (inside[0] == '\'' && inside[len(inside)-1] == '\'')) {
+        return inside[1 : len(inside)-1], true
+    }
+    return inside, true
+}
+
+// executeInclude resolves a module/file path and executes it in current state
+func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, out io.Writer) error {
+    // Resolution rules:
+    // 1) explicit file exists as given
+    // 2) lib/<name>.sqd
+    // 3) ~/.squ1d/packages/<name>/__init__.sqd
+    candidates := []string{path}
+    if !strings.HasSuffix(path, ".sqd") {
+        candidates = append(candidates, "lib/"+path+".sqd")
+    }
+    if home, err := os.UserHomeDir(); err == nil {
+        candidates = append(candidates, home+"/.squ1d/packages/"+path+"/__init__.sqd")
+    }
+
+    var chosen string
+    for _, c := range candidates {
+        if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+            chosen = c
+            break
+        }
+    }
+    if chosen == "" {
+        return fmt.Errorf("module or file not found: %s", path)
+    }
+
+    data, err := os.ReadFile(chosen)
+    if err != nil {
+        return fmt.Errorf("could not read %s: %v", chosen, err)
+    }
+
+    // Parse and execute as a whole unit to preserve statements across lines
+    l := lexer.New(string(data))
+    p := parser.New(l)
+    program := p.ParseProgram()
+    if len(p.Errors()) != 0 {
+        printParserErrors(out, p.Errors())
+        return fmt.Errorf("parse errors in include %s", chosen)
+    }
+
+    comp := compiler.NewWithState(symbolTable, *constants)
+    if err := comp.Compile(program); err != nil {
+        return fmt.Errorf("compile error in include %s: %v", chosen, err)
+    }
+    bytecode := comp.Bytecode()
+    *constants = bytecode.Constants
+    m := vm.NewWithGlobalsStore(bytecode, globals)
+    if err := m.Run(); err != nil {
+        return fmt.Errorf("runtime error in include %s: %v", chosen, err)
+    }
+    return nil
+}
+
+
 func ExecuteFile(filename string, out io.Writer) error {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -183,6 +258,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 		}
 	}
 
+
 	// Process the file content line by line to capture all outputs
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	var currentInput strings.Builder
@@ -202,6 +278,16 @@ func ExecuteFile(filename string, out io.Writer) error {
 			// We have a complete statement, execute it
 			input := currentInput.String()
 			currentInput.Reset()
+			
+			// Handle include inline
+			if incPath, ok := tryParseInclude(input); ok {
+				if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+					fmt.Fprintf(out, "Include error: %v\n", err)
+					return err
+				}
+				continue
+			}
+
 			
 			l := lexer.New(input)
 			p := parser.New(l)
@@ -249,6 +335,16 @@ func ExecuteFile(filename string, out io.Writer) error {
 	// Handle any remaining input
 	if currentInput.Len() > 0 {
 		input := currentInput.String()
+		
+		// Handle include inline
+		if incPath, ok := tryParseInclude(input); ok {
+			if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+				fmt.Fprintf(out, "Include error: %v\n", err)
+				return err
+			}
+			return nil
+		}
+
 		l := lexer.New(input)
 		p := parser.New(l)
 

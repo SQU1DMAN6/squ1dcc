@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"squ1d++/pkg"
 )
 
 func createBuiltin(fn BuiltinFunction, class string) *Builtin {
@@ -394,6 +395,115 @@ var Builtins = []struct {
 
 			return &Integer{Value: int64(fl.Value)}
 		}, "math"),
+	},
+	{
+		"include",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			path, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `include` must be STRING, got %s", args[0].Type())
+			}
+
+			if _, err := os.Stat(path.Value); os.IsNotExist(err) {
+				return newError("File '%s' not found", path.Value)
+			}
+
+			content, err := os.ReadFile(path.Value)
+			if err != nil {
+				return newError("Could not read file '%s': %v", path.Value, err)
+			}
+
+			return &String{Value: string(content)}
+		}, ""),
+	},
+	{
+		"pkg_create",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("Wrong number of arguments. Expected 1 or 2, got %d", len(args))
+			}
+
+			name, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `pkg_create` must be STRING, got %s", args[0].Type())
+			}
+
+			description := ""
+			if len(args) == 2 {
+				desc, ok := args[1].(*String)
+				if !ok {
+					return newError("Argument 1 to `pkg_create` must be STRING, got %s", args[1].Type())
+				}
+				description = desc.Value
+			}
+
+			err := pkg.GlobalManager.CreatePackage(name.Value, description)
+			if err != nil {
+				return newError("Failed to create package: %v", err)
+			}
+
+			return &String{Value: "Package '" + name.Value + "' created successfully"}
+		}, ""),
+	},
+	{
+		"pkg_list",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 0 {
+				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
+			}
+
+			packages, err := pkg.GlobalManager.ListPackages()
+			if err != nil {
+				return newError("Failed to list packages: %v", err)
+			}
+
+			// Create an array of package information
+			elements := make([]Object, len(packages))
+			for i, pkg := range packages {
+				// Create a hash for each package
+				pairs := make(map[HashKey]HashPair)
+				
+				nameKey := &String{Value: "name"}
+				nameValue := &String{Value: pkg.Name}
+				pairs[nameKey.HashKey()] = HashPair{Key: nameKey, Value: nameValue}
+				
+				versionKey := &String{Value: "version"}
+				versionValue := &String{Value: pkg.Version}
+				pairs[versionKey.HashKey()] = HashPair{Key: versionKey, Value: versionValue}
+				
+				descKey := &String{Value: "description"}
+				descValue := &String{Value: pkg.Description}
+				pairs[descKey.HashKey()] = HashPair{Key: descKey, Value: descValue}
+				
+				elements[i] = &Hash{Pairs: pairs}
+			}
+
+			return &Array{Elements: elements}
+		}, ""),
+	},
+	{
+		"pkg_remove",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			name, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `pkg_remove` must be STRING, got %s", args[0].Type())
+			}
+
+			err := pkg.GlobalManager.RemovePackage(name.Value)
+			if err != nil {
+				return newError("Failed to remove package: %v", err)
+			}
+
+			return &String{Value: "Package '" + name.Value + "' removed successfully"}
+		}, ""),
 	},
 	// String builtins
 	{

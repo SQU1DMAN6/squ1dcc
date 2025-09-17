@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"squ1d++/repl"
 )
@@ -47,12 +48,12 @@ func main() {
 		filename := args[0]
 		err := repl.ExecuteFile(filename, os.Stdout)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error executing file %s: %v\n", filename, err)
+			fmt.Fprintf(os.Stderr, "Error executing file %s: %v\n\t", filename, err)
 			os.Exit(1)
 		}
 	} else {
 		// Interactive REPL mode
-		fmt.Printf("Hello %s! This is SQU1D++!\n", user.Username)
+		fmt.Printf("Hello %s! This is the SQU1D++ SQU1DLang compiler, version 1 written by Quan Thai.\n", user.Username)
 		repl.Start(os.Stdin, os.Stdout)
 	}
 }
@@ -62,6 +63,51 @@ func compileToExecutable(inputFile, outputFile string) error {
 	content, err := os.ReadFile(inputFile)
 	if err != nil {
 		return fmt.Errorf("could not read input file: %v", err)
+	}
+
+	// Expand include("...") statements by inlining their content before embedding
+	expandIncludes := func(code string) (string, error) {
+		var out []string
+		lines := strings.Split(code, "\n")
+		for _, raw := range lines {
+			line := strings.TrimSpace(raw)
+			if strings.HasPrefix(line, "include(") && strings.HasSuffix(line, ")") {
+				inside := strings.TrimSpace(line[len("include(") : len(line)-1])
+				if len(inside) >= 2 && ((inside[0] == '"' && inside[len(inside)-1] == '"') || (inside[0] == '\'' && inside[len(inside)-1] == '\'')) {
+					inside = inside[1 : len(inside)-1]
+				}
+				candidates := []string{inside}
+				if !strings.HasSuffix(inside, ".sqd") {
+					candidates = append(candidates, filepath.Join("lib", inside+".sqd"))
+				}
+				if home, err := os.UserHomeDir(); err == nil {
+					candidates = append(candidates, filepath.Join(home, ".squ1d", "packages", inside, "__init__.sqd"))
+				}
+				var chosen string
+				for _, c := range candidates {
+					if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+						chosen = c
+						break
+					}
+				}
+				if chosen == "" {
+					return "", fmt.Errorf("module or file not found: %s", inside)
+				}
+				data, err := os.ReadFile(chosen)
+				if err != nil {
+					return "", fmt.Errorf("could not read %s: %v", chosen, err)
+				}
+				out = append(out, string(data))
+				continue
+			}
+			out = append(out, raw)
+		}
+		return strings.Join(out, "\n"), nil
+	}
+
+	expanded, err := expandIncludes(string(content))
+	if err != nil {
+		return fmt.Errorf("include error: %v", err)
 	}
 
 	// Create a temporary Go file that embeds the SQU1D++ code
@@ -149,11 +195,11 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, string(content))
+`, expanded)
 
 	err = os.WriteFile(tempGoFile, []byte(goCode), 0644)
 	if err != nil {
-		return fmt.Errorf("could not write temporary Go file: %v", err)
+		return fmt.Errorf("Could not write temporary Go file: %v", err)
 	}
 
 	// Compile the Go file to an executable
