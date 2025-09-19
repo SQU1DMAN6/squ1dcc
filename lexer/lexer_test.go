@@ -120,8 +120,8 @@ if (5 < 10) {
 		{token.COLON, ":"},
 		{token.STRING, "bar"},
 		{token.RBRACE, "}"},
-		{token.FLOAT, "'1.1234823746283746"},
-		{token.FLOAT, "'12938472.39847"},
+		{token.FLOAT, "1.1234823746283746"},
+		{token.FLOAT, "12938472.39847"},
 		{token.EOF, ""},
 	}
 

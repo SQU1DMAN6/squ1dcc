@@ -25,7 +25,7 @@ type Manager struct {
 // NewManager creates a new package manager
 func NewManager() *Manager {
 	homeDir, _ := os.UserHomeDir()
-	packageDir := filepath.Join(homeDir, ".squ1d", "packages")
+	packageDir := filepath.Join(homeDir, ".cache", "squ1dlang")
 	
 	// Create package directory if it doesn't exist
 	os.MkdirAll(packageDir, 0755)

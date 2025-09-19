@@ -4,24 +4,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
+	"squ1d++/object"
 	"squ1d++/parser"
 	"squ1d++/vm"
+	"strings"
 )
 
-// Loader handles loading and executing SQU1D++ files and packages
 type Loader struct {
 	loadedFiles map[string]bool
 	searchPaths []string
 }
 
-// NewLoader creates a new file loader
 func NewLoader() *Loader {
 	homeDir, _ := os.UserHomeDir()
-	packageDir := filepath.Join(homeDir, ".squ1d", "packages")
-	
+	packageDir := filepath.Join(homeDir, ".cache", "squ1dlang")
+
 	return &Loader{
 		loadedFiles: make(map[string]bool),
 		searchPaths: []string{".", "./lib", "./packages", packageDir},
@@ -99,7 +98,7 @@ func (l *Loader) executeContent(content string, symbolTable *compiler.SymbolTabl
 	}
 
 	// Compile the program
-	comp := compiler.NewWithState(symbolTable, constants)
+	comp := compiler.NewWithState(symbolTable, constants.([]object.Object))
 	err := comp.Compile(program)
 	if err != nil {
 		return nil, fmt.Errorf("compilation error: %v", err)
@@ -107,7 +106,7 @@ func (l *Loader) executeContent(content string, symbolTable *compiler.SymbolTabl
 
 	// Execute the program
 	code := comp.Bytecode()
-	machine := vm.NewWithGlobalsStore(code, globals)
+	machine := vm.NewWithGlobalsStore(code, globals.([]object.Object))
 
 	err = machine.Run()
 	if err != nil {

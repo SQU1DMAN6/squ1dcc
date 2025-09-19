@@ -219,8 +219,8 @@ func TestFloatLiteralExpression(t *testing.T) {
 		t.Errorf("literal.Value is not %f. Got %f", 9.01234, literal.Value)
 	}
 
-	if literal.TokenLiteral() != "'9.01234" {
-		t.Errorf("literal.TokenLiteral is not %s. Got %s", "'9.01234", literal.TokenLiteral())
+	if literal.TokenLiteral() != "9.01234" {
+		t.Errorf("literal.TokenLiteral is not %s. Got %s", "9.01234", literal.TokenLiteral())
 	}
 }
 

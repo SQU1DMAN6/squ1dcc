@@ -6,6 +6,7 @@ import (
 	"squ1d++/lexer"
 	"squ1d++/token"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -598,7 +599,9 @@ func (p *Parser) parseStatement() ast.Statement {
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("line %d, column %d: No prefix parse function for %s found.", p.curToken.Line, p.curToken.Column, t)
+	context := p.getErrorContext(p.curToken.Line, p.curToken.Column)
+	msg := fmt.Sprintf("line %d, column %d: No prefix parse function for %s found.\n%s", 
+		p.curToken.Line, p.curToken.Column, t, context)
 	p.errors = append(p.errors, msg)
 }
 
@@ -636,7 +639,37 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 	}
 }
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("line %d, column %d: expected next token to be %s, got %s instead",
-		p.peekToken.Line, p.peekToken.Column, t, p.peekToken.Type)
+	context := p.getErrorContext(p.peekToken.Line, p.peekToken.Column)
+	msg := fmt.Sprintf("line %d, column %d: expected next token to be %s, got %s instead\n%s",
+		p.peekToken.Line, p.peekToken.Column, t, p.peekToken.Type, context)
 	p.errors = append(p.errors, msg)
+}
+
+// getErrorContext returns a formatted string showing the line with an error and a pointer to the error location
+func (p *Parser) getErrorContext(line, column int) string {
+	if p.l == nil {
+		return ""
+	}
+	
+	// Get the input from the lexer
+	input := p.l.GetInput()
+	if input == "" {
+		return ""
+	}
+	
+	lines := strings.Split(input, "\n")
+	if line < 1 || line > len(lines) {
+		return ""
+	}
+	
+	// Get the line with the error (1-indexed)
+	errorLine := lines[line-1]
+	
+	// Create a pointer string
+	pointer := ""
+	if column > 0 && column <= len(errorLine) {
+		pointer = strings.Repeat(" ", column-1) + "^"
+	}
+	
+	return fmt.Sprintf("  %s\n  %s", errorLine, pointer)
 }

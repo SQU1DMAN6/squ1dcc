@@ -40,11 +40,17 @@ SQU1DLang supports the following primitive data types:
 
 ### Floats
 
+Floats can be written with or without quotes:
+
 ```squ1d
-'42
-'-17
-'1.123
-'29.24837
+'42.5      # Quoted float
+42.5       # Unquoted float
+'-17.25    # Negative quoted float
+-17.25     # Negative unquoted float
+'1.123     # Quoted decimal
+1.123      # Unquoted decimal
+'29.24837  # Quoted float
+29.24837   # Unquoted float
 ```
 
 ### Booleans
@@ -177,9 +183,11 @@ var age = person["age"];
 
 ## Built-in Functions
 
-SQU1DLang provides several built-in functions:
+SQU1DLang provides several built-in functions organized into different categories:
 
-### `write(...args)`
+### Core Functions
+
+#### `write(...args)`
 
 Prints values to the console:
 
@@ -188,7 +196,7 @@ write("Hello, World!");
 write("Value:", 42);
 ```
 
-### `read([prompt])`
+#### `read([prompt])`
 
 Reads input from the user:
 
@@ -197,7 +205,7 @@ var input = read();
 var name = read("Enter your name: ");
 ```
 
-### `cat(value)`
+#### `cat(value)`
 
 Returns the length of a string or array:
 
@@ -206,7 +214,7 @@ var len = cat("hello");        # Returns 5
 var count = cat([1, 2, 3]);    # Returns 3
 ```
 
-### `append(array, value)`
+#### `append(array, value)`
 
 Adds an element to the end of an array:
 
@@ -215,7 +223,7 @@ var numbers = [1, 2, 3];
 var extended = append(numbers, 4);  # Returns [1, 2, 3, 4]
 ```
 
-### `tp(value)`
+#### `tp(value)`
 
 Returns the type of a value as a string:
 
@@ -227,6 +235,157 @@ tp({});        # Returns "Object"
 tp(true);      # Returns "Boolean"
 ```
 
+### Math Functions
+
+#### `abs(value)`
+
+Returns the absolute value of a number:
+
+```squ1d
+write(abs(-5));    # Returns 5
+write(abs(3.14));  # Returns 3.14
+```
+
+#### `sqrt(value)`
+
+Returns the square root of a number:
+
+```squ1d
+write(sqrt(16));   # Returns 4
+write(sqrt(2));    # Returns 1.4142135623730951
+```
+
+#### `pow(base, exponent)`
+
+Returns base raised to the power of exponent:
+
+```squ1d
+write(pow(2, 3));  # Returns 8
+write(pow(3, 2));  # Returns 9
+```
+
+#### `sin(value)`, `cos(value)`
+
+Trigonometric functions:
+
+```squ1d
+write(sin(0));     # Returns 0
+write(cos(0));     # Returns 1
+```
+
+#### `pi`, `e`
+
+Mathematical constants:
+
+```squ1d
+write(pi);         # Returns 3.141592653589793
+write(e);          # Returns 2.718281828459045
+```
+
+### String Functions
+
+#### `upper(string)`
+
+Converts a string to uppercase:
+
+```squ1d
+write(upper("hello"));  # Returns "HELLO"
+```
+
+#### `lower(string)`
+
+Converts a string to lowercase:
+
+```squ1d
+write(lower("WORLD"));  # Returns "world"
+```
+
+#### `trim(string)`
+
+Removes whitespace from both ends of a string:
+
+```squ1d
+write(trim("  hello  "));  # Returns "hello"
+```
+
+### System Functions
+
+#### `env(key)`
+
+Gets an environment variable:
+
+```squ1d
+write(env("HOME"));  # Returns your home directory
+```
+
+#### `exec(command)`
+
+Executes a system command:
+
+```squ1d
+write(exec("echo hello"));  # Returns "hello"
+```
+
+#### `sleep(seconds)`
+
+Pauses execution for the specified number of seconds:
+
+```squ1d
+sleep(1);  # Sleep for 1 second
+```
+
+#### `now()`
+
+Returns the current timestamp:
+
+```squ1d
+write(now());  # Returns current Unix timestamp
+```
+
+### Package Management
+
+#### `pkg_create(name, description)`
+
+Creates a new package:
+
+```squ1d
+pkg_create("mypackage", "A sample package");
+```
+
+#### `pkg_list()`
+
+Lists all available packages:
+
+```squ1d
+write(pkg_list());
+```
+
+#### `pkg_remove(name)`
+
+Removes a package:
+
+```squ1d
+pkg_remove("mypackage");
+```
+
+### Type Conversion
+
+#### `i2fl(integer)`
+
+Converts an integer to a float:
+
+```squ1d
+write(i2fl(42));  # Returns 42.0
+```
+
+#### `fl2i(float)`
+
+Converts a float to an integer:
+
+```squ1d
+write(fl2i(3.14));  # Returns 3
+```
+
 ## Operators
 
 ### Arithmetic Operators
@@ -236,6 +395,7 @@ tp(true);      # Returns "Boolean"
 -   # Subtraction
 *   # Multiplication
 /   # Division
+%   # Modulo (remainder)
 ```
 
 ### Comparison Operators
@@ -245,12 +405,20 @@ tp(true);      # Returns "Boolean"
 !=  # Not equal to
 <   # Less than
 >   # Greater than
+<=  # Less than or equal to
+>=  # Greater than or equal to
 ```
 
 ### Logical Operators
 
 ```squ1d
 !   # Logical NOT
+```
+
+### Assignment Operator
+
+```squ1d
+=   # Assignment (for variable reassignment)
 ```
 
 ### String Concatenation
@@ -307,16 +475,76 @@ write("The sum is: ", sum);
 - **Closures**: Functions capture their lexical environment
 - **Garbage Collection**: Automatic memory management
 - **REPL Support**: Interactive read-eval-print loop for testing code
+- **Bytecode Compilation**: Code is compiled to bytecode for efficient execution
+- **Virtual Machine**: Custom VM for executing compiled bytecode
+- **Package System**: Built-in package management and module system
+- **File Includes**: Support for including other SQU1DLang files
+- **Standalone Executables**: Compile to native executables
+
+## Compiler Architecture
+
+SQU1DLang is implemented as a complete compiler with the following components:
+
+- **Lexer**: Tokenizes source code into tokens
+- **Parser**: Builds an Abstract Syntax Tree (AST) from tokens
+- **Compiler**: Compiles AST to bytecode instructions
+- **Virtual Machine**: Executes bytecode instructions
+- **Object System**: Runtime object representation and garbage collection
+- **Built-in Functions**: Extensive library of built-in functions
+- **Package Manager**: Built-in package creation and management
 
 ## Getting Started
 
-To run SQU1DLang code, use the REPL:
+### Interactive REPL
+
+To start an interactive session where you can type SQU1DLang code and see the results immediately:
 
 ```bash
 go run .
 ```
 
-This will start an interactive session where you can type SQU1DLang code and see the results immediately.
+### Running Files
+
+To execute a SQU1DLang file:
+
+```bash
+go run . filename.sqd
+```
+
+### Compiling to Executable
+
+To compile a SQU1DLang file to a standalone executable:
+
+```bash
+go run . -B input.sqd -o output
+```
+
+This creates a standalone executable that doesn't require Go to run.
+
+### Package Management
+
+SQU1DLang includes a built-in package management system:
+
+```squ1d
+# Create a new package
+pkg_create("mypackage", "A sample package");
+
+# List available packages
+write(pkg_list());
+
+# Remove a package
+pkg_remove("mypackage");
+```
+
+### File Includes
+
+You can include other SQU1DLang files using the `include()` function:
+
+```squ1d
+include("library.sqd");
+```
+
+The include system searches in the current directory, `lib/` directory, and user's package cache.
 
 ---
 

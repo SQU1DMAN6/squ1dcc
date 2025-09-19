@@ -94,7 +94,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case "-":
 			c.emit(code.OpNGT)
 		default:
-			return fmt.Errorf("Unknown operator: %s", node.Operator)
+			return fmt.Errorf("line %d, column %d: Unknown operator: %s", node.Token.Line, node.Token.Column, node.Operator)
 		}
 
 	case *ast.InfixExpression:
@@ -179,7 +179,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			if ident, ok := node.Left.(*ast.Identifier); ok {
 				symbol, ok := c.symbolTable.Resolve(ident.Value)
 				if !ok {
-					return fmt.Errorf("Undefined variable %s", ident.Value)
+					return fmt.Errorf("line %d, column %d: Undefined variable %s", ident.Token.Line, ident.Token.Column, ident.Value)
 				}
 
 				if symbol.Scope == GlobalScope {
@@ -188,10 +188,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 					c.emit(code.OpSetLocal, symbol.Index)
 				}
 			} else {
-				return fmt.Errorf("Expected identifier for assignment, got %T", node.Left)
+				return fmt.Errorf("line %d, column %d: Expected identifier for assignment, got %T", node.Token.Line, node.Token.Column, node.Left)
 			}
 		default:
-			return fmt.Errorf("Unknown operator %s", node.Operator)
+			return fmt.Errorf("line %d, column %d: Unknown operator %s", node.Token.Line, node.Token.Column, node.Operator)
 		}
 
 	case *ast.IfExpression:
@@ -450,7 +450,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
 		if !ok {
-			return fmt.Errorf("Undefined variable %s", node.Value)
+			return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
 		}
 
 		// Check if this is a class-based builtin being accessed directly
@@ -458,7 +458,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			// Find the builtin definition to check if it has a class
 			for _, def := range object.Builtins {
 				if def.Name == node.Value && def.Builtin.Class != "" {
-					return fmt.Errorf("Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Value, def.Builtin.Class, node.Value)
+					return fmt.Errorf("line %d, column %d: Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Token.Line, node.Token.Column, node.Value, def.Builtin.Class, node.Value)
 				}
 			}
 		}

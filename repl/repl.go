@@ -158,7 +158,6 @@ func printParserErrors(out io.Writer, errors []string) {
 	}
 }
 
-// tryParseInclude returns path if input is an include("path") single statement
 func tryParseInclude(input string) (string, bool) {
     trimmed := strings.TrimSpace(input)
     if !strings.HasPrefix(trimmed, "include(") || !strings.HasSuffix(trimmed, ")") {
@@ -171,18 +170,13 @@ func tryParseInclude(input string) (string, bool) {
     return inside, true
 }
 
-// executeInclude resolves a module/file path and executes it in current state
 func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, out io.Writer) error {
-    // Resolution rules:
-    // 1) explicit file exists as given
-    // 2) lib/<name>.sqd
-    // 3) ~/.squ1d/packages/<name>/__init__.sqd
     candidates := []string{path}
     if !strings.HasSuffix(path, ".sqd") {
         candidates = append(candidates, "lib/"+path+".sqd")
     }
     if home, err := os.UserHomeDir(); err == nil {
-        candidates = append(candidates, home+"/.squ1d/packages/"+path+"/__init__.sqd")
+        candidates = append(candidates, home+"/.cache/squ1dlang/"+path+"/__init__.sqd")
     }
 
     var chosen string

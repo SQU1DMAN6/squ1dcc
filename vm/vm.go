@@ -75,7 +75,7 @@ func (vm *VM) Run() error {
 				return err
 			}
 
-		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv:
+		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv, code.OpMod:
 			err := vm.executeBinaryOperation(op)
 			if err != nil {
 				return err
@@ -587,7 +587,7 @@ func (vm *VM) executeHashDot(hash, right object.Object) error {
 
 	// For dot notation, the right side should be a string identifier
 	var keyName string
-	
+
 	switch right := right.(type) {
 	case *object.String:
 		keyName = right.Value

@@ -69,6 +69,16 @@ func TestIntegerArithmetic(t *testing.T) {
 			},
 		},
 		{
+			input:             "10 % 3",
+			expectedConstants: []interface{}{10, 3},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpMod),
+				code.Make(code.OpPop),
+			},
+		},
+		{
 			input:             "-1",
 			expectedConstants: []interface{}{1},
 			expectedInstructions: []code.Instructions{

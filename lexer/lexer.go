@@ -40,167 +40,175 @@ func (l *Lexer) readChar() {
 }
 
 func (l *Lexer) NextToken() token.Token {
-    var tok token.Token
+	var tok token.Token
 
-    l.skipWhitespace()
-    // Capture starting position for this token. Our column points one past the
-    // current character in readChar(), so adjust back by 1 when possible.
-    startLine := l.line
-    startCol := l.column
-    if startCol > 1 {
-        startCol = startCol - 1
-    }
-    tok.Line = startLine
-    tok.Column = startCol
+	l.skipWhitespace()
+	// Capture starting position for this token. Our column points one past the
+	// current character in readChar(), so adjust back by 1 when possible.
+	startLine := l.line
+	startCol := l.column
+	if startCol > 1 {
+		startCol = startCol - 1
+	}
+	tok.Line = startLine
+	tok.Column = startCol
 
 	switch l.ch {
 
 	default:
-        if isLetter(l.ch) {
+		if isLetter(l.ch) {
 			tok.Literal = l.readIdentifier()
 			tok.Type = token.LookupIdent(tok.Literal)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Line = startLine
+			tok.Column = startCol
 			return tok
 		} else if isDigit(l.ch) {
-			// Check if this is a float (has a dot)
-			if l.peekChar() == '.' {
+			// Read the integer part first
+			position := l.position
+			for isDigit(l.ch) {
+				l.readChar()
+			}
+
+			// Check if the next character is a dot
+			if l.ch == '.' {
+				// This is a float, read the rest
+				l.readChar() // consume the dot
+				for isDigit(l.ch) {
+					l.readChar()
+				}
 				tok.Type = token.FLOAT
-				tok.Literal = l.readFloat()
-                tok.Line = startLine
-                tok.Column = startCol
+				tok.Literal = l.input[position:l.position]
+				tok.Line = startLine
+				tok.Column = startCol
 				return tok
 			}
+
+			// This is just an integer
 			tok.Type = token.INT
-			tok.Literal = l.readNumber()
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Literal = l.input[position:l.position]
+			tok.Line = startLine
+			tok.Column = startCol
 			return tok
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Line = startLine
+			tok.Column = startCol
 		}
-
-	case '\'':
-		tok.Type = token.FLOAT
-		tok.Literal = l.readFloat()
-		return tok
-    case '=':
-        tok = newToken(token.ASSIGN, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+	case '=':
+		tok = newToken(token.ASSIGN, l.ch)
+		tok.Line = startLine
+		tok.Column = startCol
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
-            tok = token.Token{Type: token.EQ, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+			tok = token.Token{Type: token.EQ, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
 		} else {
-            tok = newToken(token.ASSIGN, l.ch)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok = newToken(token.ASSIGN, l.ch)
+			tok.Line = startLine
+			tok.Column = startCol
 		}
 	case '-':
 		tok = newToken(token.MINUS, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '/':
 		tok = newToken(token.SLASH, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '*':
 		tok = newToken(token.ASTERISK, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '%':
 		tok = newToken(token.MODULO, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '<':
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
-            tok = token.Token{Type: token.LE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+			tok = token.Token{Type: token.LE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
 		} else {
 			tok = newToken(token.LT, l.ch)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Line = startLine
+			tok.Column = startCol
 		}
 	case '>':
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
-            tok = token.Token{Type: token.GE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+			tok = token.Token{Type: token.GE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
 		} else {
 			tok = newToken(token.GT, l.ch)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Line = startLine
+			tok.Column = startCol
 		}
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '(':
 		tok = newToken(token.LPAREN, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case ')':
 		tok = newToken(token.RPAREN, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case ',':
 		tok = newToken(token.COMMA, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '+':
 		tok = newToken(token.PLUS, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '{':
 		tok = newToken(token.LBRACE, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '}':
 		tok = newToken(token.RBRACE, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '!':
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
-            tok = token.Token{Type: token.NOT_EQ, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+			tok = token.Token{Type: token.NOT_EQ, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
 		} else {
 			tok = newToken(token.BANG, l.ch)
-            tok.Line = startLine
-            tok.Column = startCol
+			tok.Line = startLine
+			tok.Column = startCol
 		}
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString()
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '[':
 		tok = newToken(token.LBRACKET, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case ']':
 		tok = newToken(token.RBRACKET, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case ':':
 		tok = newToken(token.COLON, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '.':
 		tok = newToken(token.DOT, l.ch)
-        tok.Line = startLine
-        tok.Column = startCol
+		tok.Line = startLine
+		tok.Column = startCol
 	case '#':
 		l.skipComment()
 		return l.NextToken()
 	case 0:
 		tok.Literal = ""
 		tok.Type = token.EOF
-    }
+	}
 
 	l.readChar()
 	return tok
@@ -243,22 +251,21 @@ func (l *Lexer) readNumber() string {
 
 func (l *Lexer) readFloat() string {
 	position := l.position
-	
+
 	// Read the integer part
 	for isDigit(l.ch) {
 		l.readChar()
 	}
-	
+
 	// Read the decimal point
 	if l.ch == '.' {
 		l.readChar()
 	}
-	
+
 	// Read the fractional part
 	for isDigit(l.ch) {
 		l.readChar()
 	}
-	
 	return l.input[position:l.position]
 }
 
@@ -266,6 +273,10 @@ func (l *Lexer) readString() string {
 	position := l.position + 1
 	for {
 		l.readChar()
+
+		if l.ch == '\'' || l.ch == '`' {
+			continue
+		}
 
 		if l.ch == '"' || l.ch == 0 {
 			break
@@ -293,14 +304,19 @@ func (l *Lexer) peekChar() byte {
 func (l *Lexer) skipComment() {
 	// Skip the opening #
 	l.readChar()
-	
+
 	// Read until we find the closing # or end of input
 	for l.ch != 0 && l.ch != '#' {
 		l.readChar()
 	}
-	
+
 	// If we found a closing #, skip it too
 	if l.ch == '#' {
 		l.readChar()
 	}
+}
+
+// GetInput returns the original input string
+func (l *Lexer) GetInput() string {
+	return l.input
 }

@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strings"
 	"squ1d++/repl"
+	"strings"
 )
 
 func main() {
@@ -29,14 +29,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Usage: %s -B <input.sqd> [-o output]\n", os.Args[0])
 			os.Exit(1)
 		}
-		
+
 		inputFile := args[0]
 		outputFile := *outputFlag
 		if outputFile == "" {
-			// Remove .sqd extension and add executable extension
 			outputFile = strings.TrimSuffix(inputFile, ".sqd")
 		}
-		
+
 		err := compileToExecutable(inputFile, outputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error compiling %s: %v\n", inputFile, err)
@@ -58,11 +57,38 @@ func main() {
 	}
 }
 
+// isCompleteStatement checks if the input represents a complete statement
+func isCompleteStatement(input string) bool {
+	openBraces := 0
+	openParens := 0
+	openBrackets := 0
+
+	for _, char := range input {
+		switch char {
+		case '{':
+			openBraces++
+		case '}':
+			openBraces--
+		case '(':
+			openParens++
+		case ')':
+			openParens--
+		case '[':
+			openBrackets++
+		case ']':
+			openBrackets--
+		}
+	}
+
+	// Statement is complete if all delimiters are matched
+	return openBraces == 0 && openParens == 0 && openBrackets == 0
+}
+
 func compileToExecutable(inputFile, outputFile string) error {
 	// Read the input file
 	content, err := os.ReadFile(inputFile)
 	if err != nil {
-		return fmt.Errorf("could not read input file: %v", err)
+		return fmt.Errorf("Could not read input file: %v", err)
 	}
 
 	// Expand include("...") statements by inlining their content before embedding
@@ -81,7 +107,7 @@ func compileToExecutable(inputFile, outputFile string) error {
 					candidates = append(candidates, filepath.Join("lib", inside+".sqd"))
 				}
 				if home, err := os.UserHomeDir(); err == nil {
-					candidates = append(candidates, filepath.Join(home, ".squ1d", "packages", inside, "__init__.sqd"))
+					candidates = append(candidates, filepath.Join(home, ".cache", "squ1dlang", inside, "__init__.sqd"))
 				}
 				var chosen string
 				for _, c := range candidates {
@@ -91,11 +117,11 @@ func compileToExecutable(inputFile, outputFile string) error {
 					}
 				}
 				if chosen == "" {
-					return "", fmt.Errorf("module or file not found: %s", inside)
+					return "", fmt.Errorf("Module or file not found: %s", inside)
 				}
 				data, err := os.ReadFile(chosen)
 				if err != nil {
-					return "", fmt.Errorf("could not read %s: %v", chosen, err)
+					return "", fmt.Errorf("Could not read %s: %v", chosen, err)
 				}
 				out = append(out, string(data))
 				continue
@@ -107,10 +133,9 @@ func compileToExecutable(inputFile, outputFile string) error {
 
 	expanded, err := expandIncludes(string(content))
 	if err != nil {
-		return fmt.Errorf("include error: %v", err)
+		return fmt.Errorf("Include error: %v", err)
 	}
 
-	// Create a temporary Go file that embeds the SQU1D++ code
 	tempGoFile := "temp_squ1d_compiled.go"
 	defer os.Remove(tempGoFile)
 
@@ -130,6 +155,33 @@ import (
 
 const squ1dCode = %q
 
+// isCompleteStatement checks if the input represents a complete statement
+func isCompleteStatement(input string) bool {
+	openBraces := 0
+	openParens := 0
+	openBrackets := 0
+
+	for _, char := range input {
+		switch char {
+		case '{':
+			openBraces++
+		case '}':
+			openBraces--
+		case '(':
+			openParens++
+		case ')':
+			openParens--
+		case '[':
+			openBrackets++
+		case ']':
+			openBrackets--
+		}
+	}
+
+	// Statement is complete if all delimiters are matched
+	return openBraces == 0 && openParens == 0 && openBrackets == 0
+}
+
 func main() {
 	// Create a new VM state
 	constants := []object.Object{}
@@ -139,54 +191,74 @@ func main() {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
 
-	// Read the file line by line
+	// Register class objects (math, os, time, string, etc.)
+	classes := object.CreateClassObjects()
+	for name, classObj := range classes {
+    	sym := symbolTable.Define(name)
+    	globals[sym.Index] = classObj
+    }
+
+	// Create a single compiler instance to maintain state across lines
+	comp := compiler.NewWithState(symbolTable, constants)
+
+	// Read the file and group lines into complete statements
 	scanner := bufio.NewScanner(strings.NewReader(squ1dCode))
 	lineNumber := 0
+	var currentStatement strings.Builder
+
 	for scanner.Scan() {
 		lineNumber++
-		line := strings.TrimSpace(scanner.Text())
-		
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
+		line := scanner.Text()
+		currentStatement.WriteString(line)
+		currentStatement.WriteString("\n")
 
-		// Parse and execute each line individually
-		l := lexer.New(line)
-		p := parser.New(l)
+		// Check if we have a complete statement
+		if isCompleteStatement(currentStatement.String()) {
+			statement := strings.TrimSpace(currentStatement.String())
+			if statement != "" {
+				// Parse and execute the complete statement
+				l := lexer.New(statement)
+				p := parser.New(l)
 
-		program := p.ParseProgram()
-		if len(p.Errors()) != 0 {
-			fmt.Fprintf(os.Stderr, "ERROR on line %%d:\\n", lineNumber)
-			for _, msg := range p.Errors() {
-				fmt.Fprintf(os.Stderr, "\\t%%s\\n", msg)
+				program := p.ParseProgram()
+				if len(p.Errors()) != 0 {
+					fmt.Fprintf(os.Stderr, "ERROR on line %%d:\\n", lineNumber)
+					for _, msg := range p.Errors() {
+						fmt.Fprintf(os.Stderr, "\\t%%s\\n", msg)
+					}
+					os.Exit(1)
+				}
+
+				// Compile the program using the persistent compiler
+				err := comp.Compile(program)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "COMPILATION ERROR on line %%d:\\n    %%s\\n", lineNumber, err)
+					os.Exit(1)
+				}
+
+				// Get the current bytecode and update constants
+				code := comp.Bytecode()
+				constants = code.Constants
+
+				// Create a new VM for this statement's execution
+				machine := vm.NewWithGlobalsStore(code, globals)
+
+				err = machine.Run()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "INSTRUCTIONS UNCLEAR on line %%d:\\n    %%s\\n", lineNumber, err)
+					os.Exit(1)
+				}
+
+				// Print the result of each statement
+				lastPopped := machine.LastPoppedStackElem()
+				if lastPopped != nil {
+					fmt.Print(lastPopped.Inspect())
+					fmt.Println()
+				}
 			}
-			os.Exit(1)
-		}
 
-		comp := compiler.NewWithState(symbolTable, constants)
-		err := comp.Compile(program)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "COMPILATION ERROR on line %%d:\\n    %%s\\n", lineNumber, err)
-			os.Exit(1)
-		}
-
-		code := comp.Bytecode()
-		constants = code.Constants
-
-		machine := vm.NewWithGlobalsStore(code, globals)
-
-		err = machine.Run()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "INSTRUCTIONS UNCLEAR on line %%d:\\n    %%s\\n", lineNumber, err)
-			os.Exit(1)
-		}
-
-		// Print the result of each line
-		lastPopped := machine.LastPoppedStackElem()
-		if lastPopped != nil {
-			fmt.Print(lastPopped.Inspect())
-			fmt.Println()
+			// Reset for next statement
+			currentStatement.Reset()
 		}
 	}
 
@@ -206,10 +278,10 @@ func main() {
 	cmd := exec.Command("go", "build", "-o", outputFile, tempGoFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	
+
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("could not compile Go code: %v", err)
+		return fmt.Errorf("Could not compile code: %v", err)
 	}
 
 	return nil
