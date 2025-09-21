@@ -298,6 +298,7 @@ func (n *Null) String() string       { return n.Token.Literal }
 type IfExpression struct {
 	Token       token.Token
 	Condition   Expression
+	Operand     token.Token
 	Consequence *BlockStatement
 	Alternative *BlockStatement
 }

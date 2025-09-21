@@ -6,12 +6,12 @@ import (
 	"io"
 	"os"
 	"os/user"
-	"strings"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
 	"squ1d++/vm"
+	"strings"
 )
 
 const PROMPT = ">> "
@@ -20,15 +20,15 @@ const CONTINUATION_PROMPT = "==>  "
 // readCompleteInput reads input until a complete statement is entered
 func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
 	var input strings.Builder
-	
+
 	scanned := scanner.Scan()
 	if !scanned {
 		return ""
 	}
-	
+
 	line := scanner.Text()
 	input.WriteString(line)
-	
+
 	// Check if we need to continue reading (unmatched braces, parentheses, etc.)
 	for needsContinuation(input.String()) {
 		fmt.Fprintf(out, CONTINUATION_PROMPT)
@@ -40,16 +40,15 @@ func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
 		input.WriteString("\n")
 		input.WriteString(line)
 	}
-	
+
 	return input.String()
 }
 
-// needsContinuation checks if the input needs continuation based on unmatched delimiters
 func needsContinuation(line string) bool {
 	openBraces := 0
 	openParens := 0
 	openBrackets := 0
-	
+
 	for _, char := range line {
 		switch char {
 		case '{':
@@ -66,7 +65,7 @@ func needsContinuation(line string) bool {
 			openBrackets--
 		}
 	}
-	
+
 	// Continue if we have unmatched delimiters
 	return openBraces > 0 || openParens > 0 || openBrackets > 0
 }
@@ -84,12 +83,12 @@ func Start(in io.Reader, out io.Writer) {
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
-	
+
 	// Add class objects to globals
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"time", "os", "math", "string"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -98,10 +97,9 @@ func Start(in io.Reader, out io.Writer) {
 		}
 	}
 
-
 	for {
 		fmt.Fprintf(out, PROMPT)
-		
+
 		// Read complete input (handling multi-line statements)
 		input := readCompleteInput(scanner, out)
 		if input == "" {
@@ -159,64 +157,63 @@ func printParserErrors(out io.Writer, errors []string) {
 }
 
 func tryParseInclude(input string) (string, bool) {
-    trimmed := strings.TrimSpace(input)
-    if !strings.HasPrefix(trimmed, "include(") || !strings.HasSuffix(trimmed, ")") {
-        return "", false
-    }
-    inside := strings.TrimSpace(trimmed[len("include(") : len(trimmed)-1])
-    if len(inside) >= 2 && ((inside[0] == '"' && inside[len(inside)-1] == '"') || (inside[0] == '\'' && inside[len(inside)-1] == '\'')) {
-        return inside[1 : len(inside)-1], true
-    }
-    return inside, true
+	trimmed := strings.TrimSpace(input)
+	if !strings.HasPrefix(trimmed, "include(") || !strings.HasSuffix(trimmed, ")") {
+		return "", false
+	}
+	inside := strings.TrimSpace(trimmed[len("include(") : len(trimmed)-1])
+	if len(inside) >= 2 && ((inside[0] == '"' && inside[len(inside)-1] == '"') || (inside[0] == '\'' && inside[len(inside)-1] == '\'')) {
+		return inside[1 : len(inside)-1], true
+	}
+	return inside, true
 }
 
 func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, out io.Writer) error {
-    candidates := []string{path}
-    if !strings.HasSuffix(path, ".sqd") {
-        candidates = append(candidates, "lib/"+path+".sqd")
-    }
-    if home, err := os.UserHomeDir(); err == nil {
-        candidates = append(candidates, home+"/.cache/squ1dlang/"+path+"/__init__.sqd")
-    }
+	candidates := []string{path}
+	if !strings.HasSuffix(path, ".sqd") {
+		candidates = append(candidates, "lib/"+path+".sqd")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, home+"/.squ1dlang/packages/"+path+"/__init__.sqd")
+	}
 
-    var chosen string
-    for _, c := range candidates {
-        if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-            chosen = c
-            break
-        }
-    }
-    if chosen == "" {
-        return fmt.Errorf("module or file not found: %s", path)
-    }
+	var chosen string
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			chosen = c
+			break
+		}
+	}
+	if chosen == "" {
+		return fmt.Errorf("module or file not found: %s", path)
+	}
 
-    data, err := os.ReadFile(chosen)
-    if err != nil {
-        return fmt.Errorf("could not read %s: %v", chosen, err)
-    }
+	data, err := os.ReadFile(chosen)
+	if err != nil {
+		return fmt.Errorf("could not read %s: %v", chosen, err)
+	}
 
-    // Parse and execute as a whole unit to preserve statements across lines
-    l := lexer.New(string(data))
-    p := parser.New(l)
-    program := p.ParseProgram()
-    if len(p.Errors()) != 0 {
-        printParserErrors(out, p.Errors())
-        return fmt.Errorf("parse errors in include %s", chosen)
-    }
+	// Parse and execute as a whole unit to preserve statements across lines
+	l := lexer.New(string(data))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		printParserErrors(out, p.Errors())
+		return fmt.Errorf("parse errors in include %s", chosen)
+	}
 
-    comp := compiler.NewWithState(symbolTable, *constants)
-    if err := comp.Compile(program); err != nil {
-        return fmt.Errorf("compile error in include %s: %v", chosen, err)
-    }
-    bytecode := comp.Bytecode()
-    *constants = bytecode.Constants
-    m := vm.NewWithGlobalsStore(bytecode, globals)
-    if err := m.Run(); err != nil {
-        return fmt.Errorf("runtime error in include %s: %v", chosen, err)
-    }
-    return nil
+	comp := compiler.NewWithState(symbolTable, *constants)
+	if err := comp.Compile(program); err != nil {
+		return fmt.Errorf("compile error in include %s: %v", chosen, err)
+	}
+	bytecode := comp.Bytecode()
+	*constants = bytecode.Constants
+	m := vm.NewWithGlobalsStore(bytecode, globals)
+	if err := m.Run(); err != nil {
+		return fmt.Errorf("runtime error in include %s: %v", chosen, err)
+	}
+	return nil
 }
-
 
 func ExecuteFile(filename string, out io.Writer) error {
 	file, err := os.Open(filename)
@@ -238,12 +235,12 @@ func ExecuteFile(filename string, out io.Writer) error {
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
-	
+
 	// Add class objects to globals
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"time", "os", "math", "string"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -252,27 +249,26 @@ func ExecuteFile(filename string, out io.Writer) error {
 		}
 	}
 
-
 	// Process the file content line by line to capture all outputs
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	var currentInput strings.Builder
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// Skip empty lines (whitespace is ignored)
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
-		
+
 		currentInput.WriteString(line)
-		
+
 		// Check if we have a complete statement
 		if !needsContinuation(currentInput.String()) {
 			// We have a complete statement, execute it
 			input := currentInput.String()
 			currentInput.Reset()
-			
+
 			// Handle include inline
 			if incPath, ok := tryParseInclude(input); ok {
 				if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
@@ -282,7 +278,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 				continue
 			}
 
-			
 			l := lexer.New(input)
 			p := parser.New(l)
 
@@ -329,7 +324,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 	// Handle any remaining input
 	if currentInput.Len() > 0 {
 		input := currentInput.String()
-		
+
 		// Handle include inline
 		if incPath, ok := tryParseInclude(input); ok {
 			if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {

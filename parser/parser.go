@@ -12,6 +12,8 @@ import (
 const (
 	_ int = iota
 	LOWEST
+	OR
+	AND
 	EQUALS
 	LESSGREATER
 	SUM
@@ -28,6 +30,8 @@ type (
 )
 
 var precedences = map[token.TokenType]int{
+	token.OR:       OR,
+	token.AND:      AND,
 	token.ASSIGN:   EQUALS,
 	token.EQ:       EQUALS,
 	token.NOT_EQ:   EQUALS,
@@ -91,6 +95,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
+	p.registerInfix(token.AND, p.parseInfixExpression)
+	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
 	p.registerInfix(token.MINUS, p.parseInfixExpression)
@@ -112,6 +118,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.DOT, p.parseDotExpression)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.BACKTICK, p.parseMLStringLiteral)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerPrefix(token.LBRACE, p.parseHashLiteral)
@@ -162,7 +169,7 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	exp := &ast.DotExpression{Token: p.curToken, Left: left}
 	p.nextToken()
-	
+
 	// If the right side is an identifier, convert it to a string literal
 	if p.curToken.Type == token.IDENT {
 		// Create a string literal from the identifier
@@ -176,7 +183,7 @@ func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	} else {
 		exp.Right = p.parseExpression(DOT)
 	}
-	
+
 	return exp
 }
 
@@ -212,10 +219,26 @@ func (p *Parser) parseIfExpression() ast.Expression {
 
 	expression.Consequence = p.parseBlockStatement()
 
-	// Parse elif/else chains
 	expression.Alternative = p.parseElifElseChain()
 
 	return expression
+}
+
+func (p *Parser) parseBlockStatement() *ast.BlockStatement {
+	block := &ast.BlockStatement{Token: p.curToken}
+	block.Statements = []ast.Statement{}
+
+	p.nextToken()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+		}
+		p.nextToken()
+	}
+
+	return block
 }
 
 func (p *Parser) parseElifElseChain() *ast.BlockStatement {
@@ -435,23 +458,6 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 	return stmt
 }
 
-func (p *Parser) parseBlockStatement() *ast.BlockStatement {
-	block := &ast.BlockStatement{Token: p.curToken}
-	block.Statements = []ast.Statement{}
-
-	p.nextToken()
-
-	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
-		stmt := p.parseStatement()
-		if stmt != nil {
-			block.Statements = append(block.Statements, stmt)
-		}
-		p.nextToken()
-	}
-
-	return block
-}
-
 func (p *Parser) parseFunctionLiteral() ast.Expression {
 	lit := &ast.FunctionLiteral{Token: p.curToken}
 
@@ -531,6 +537,10 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+func (p *Parser) parseMLStringLiteral() ast.Expression {
+	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+}
+
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	array := &ast.ArrayLiteral{Token: p.curToken}
 
@@ -600,7 +610,7 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
 	context := p.getErrorContext(p.curToken.Line, p.curToken.Column)
-	msg := fmt.Sprintf("line %d, column %d: No prefix parse function for %s found.\n%s", 
+	msg := fmt.Sprintf("line %d, column %d: No prefix parse function for %s found.\n%s",
 		p.curToken.Line, p.curToken.Column, t, context)
 	p.errors = append(p.errors, msg)
 }
@@ -650,26 +660,26 @@ func (p *Parser) getErrorContext(line, column int) string {
 	if p.l == nil {
 		return ""
 	}
-	
+
 	// Get the input from the lexer
 	input := p.l.GetInput()
 	if input == "" {
 		return ""
 	}
-	
+
 	lines := strings.Split(input, "\n")
 	if line < 1 || line > len(lines) {
 		return ""
 	}
-	
+
 	// Get the line with the error (1-indexed)
 	errorLine := lines[line-1]
-	
+
 	// Create a pointer string
 	pointer := ""
 	if column > 0 && column <= len(errorLine) {
 		pointer = strings.Repeat(" ", column-1) + "^"
 	}
-	
+
 	return fmt.Sprintf("  %s\n  %s", errorLine, pointer)
 }

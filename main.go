@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"squ1d++/object"
 	"squ1d++/repl"
 	"strings"
 )
@@ -53,6 +54,7 @@ func main() {
 	} else {
 		// Interactive REPL mode
 		fmt.Printf("Hello %s! This is the SQU1D++ SQU1DLang compiler, version 1 written by Quan Thai.\n", user.Username)
+		fmt.Printf("Available classes: %s\n\n", object.ListDefinedClasses())
 		repl.Start(os.Stdin, os.Stdout)
 	}
 }

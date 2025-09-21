@@ -194,6 +194,10 @@ func evalInfixExpression(
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
 		return nativeBoolToBooleanObject(left != right)
+	case operator == "ac":
+		return evalLogicalAndExpression(left, right)
+	case operator == "aut":
+		return evalLogicalOrExpression(left, right)
 	case left.Type() != right.Type():
 		return newError("Type mismatch: %s %s %s",
 			left.Type(), operator, right.Type())
@@ -223,6 +227,18 @@ func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 
 	value := right.(*object.Integer).Value
 	return &object.Integer{Value: -value}
+}
+
+func evalLogicalAndExpression(left, right object.Object) object.Object {
+	leftTruthy := isTruthy(left)
+	rightTruthy := isTruthy(right)
+	return nativeBoolToBooleanObject(leftTruthy && rightTruthy)
+}
+
+func evalLogicalOrExpression(left, right object.Object) object.Object {
+	leftTruthy := isTruthy(left)
+	rightTruthy := isTruthy(right)
+	return nativeBoolToBooleanObject(leftTruthy || rightTruthy)
 }
 
 func evalIntegerInfixExpression(

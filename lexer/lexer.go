@@ -43,8 +43,6 @@ func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 
 	l.skipWhitespace()
-	// Capture starting position for this token. Our column points one past the
-	// current character in readChar(), so adjust back by 1 when possible.
 	startLine := l.line
 	startCol := l.column
 	if startCol > 1 {
@@ -63,16 +61,13 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Column = startCol
 			return tok
 		} else if isDigit(l.ch) {
-			// Read the integer part first
 			position := l.position
 			for isDigit(l.ch) {
 				l.readChar()
 			}
 
-			// Check if the next character is a dot
 			if l.ch == '.' {
-				// This is a float, read the rest
-				l.readChar() // consume the dot
+				l.readChar()
 				for isDigit(l.ch) {
 					l.readChar()
 				}
@@ -186,6 +181,36 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = l.readString()
 		tok.Line = startLine
 		tok.Column = startCol
+	case '\'':
+		if l.peekChar() >= '0' && l.peekChar() <= '9' {
+			l.readChar()
+			position := l.position
+			for isDigit(l.ch) {
+				l.readChar()
+			}
+			if l.ch == '.' {
+				l.readChar()
+				for isDigit(l.ch) {
+					l.readChar()
+				}
+			}
+			tok.Type = token.FLOAT
+			tok.Literal = l.input[position:l.position]
+			tok.Line = startLine
+			tok.Column = startCol
+		} else {
+			// This is a string literal
+			tok.Type = token.STRING
+			tok.Literal = l.readSingleQuoteString()
+			tok.Line = startLine
+			tok.Column = startCol
+		}
+	case '`':
+		tok.Type = token.BACKTICK
+		mlStr := l.readMLString()
+		tok.Literal = mlStr
+		tok.Line = startLine
+		tok.Column = startCol
 	case '[':
 		tok = newToken(token.LBRACKET, l.ch)
 		tok.Line = startLine
@@ -218,8 +243,8 @@ func newToken(tokenType token.TokenType, ch byte) token.Token {
 	return token.Token{
 		Type:    tokenType,
 		Literal: string(ch),
-		Line:    0, // Will be set by caller
-		Column:  0, // Will be set by caller
+		Line:    0,
+		Column:  0,
 	}
 }
 
@@ -270,19 +295,108 @@ func (l *Lexer) readFloat() string {
 }
 
 func (l *Lexer) readString() string {
-	position := l.position + 1
+	var result []byte
+
 	for {
 		l.readChar()
 
-		if l.ch == '\'' || l.ch == '`' {
+		if l.ch == '\\' {
+			l.readChar() // Move to the character after backslash
+			switch l.ch {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '"':
+				result = append(result, '"')
+			default:
+				result = append(result, l.ch)
+			}
 			continue
 		}
 
 		if l.ch == '"' || l.ch == 0 {
 			break
 		}
+
+		result = append(result, l.ch)
 	}
-	return l.input[position:l.position]
+	return string(result)
+}
+
+func (l *Lexer) readSingleQuoteString() string {
+	var result []byte
+
+	for {
+		l.readChar()
+
+		if l.ch == '\\' {
+			l.readChar() // Move to the character after backslash
+			switch l.ch {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '\'':
+				result = append(result, '\'')
+			default:
+				result = append(result, l.ch)
+			}
+			continue
+		}
+
+		if l.ch == '\'' || l.ch == 0 {
+			break
+		}
+
+		result = append(result, l.ch)
+	}
+	return string(result)
+}
+
+func (l *Lexer) readMLString() string {
+	var result []byte
+
+	for {
+		l.readChar()
+		if l.ch == 0 {
+			break
+		}
+
+		if l.ch == '\\' {
+			l.readChar() // Move to the character after backslash
+			switch l.ch {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '`':
+				result = append(result, '`')
+			default:
+				result = append(result, l.ch)
+			}
+			continue
+		}
+
+		if l.ch == '`' {
+			break
+		}
+
+		result = append(result, l.ch)
+	}
+	return string(result)
 }
 
 func isDigit(ch byte) bool {

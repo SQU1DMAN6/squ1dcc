@@ -81,6 +81,12 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpAnd, code.OpOr:
+			err := vm.executeLogicalOperation(op)
+			if err != nil {
+				return err
+			}
+
 		case code.OpEqual, code.OpNotEqual, code.OpGreaterThan:
 			err := vm.executeComparison(op)
 			if err != nil {
@@ -235,7 +241,7 @@ func (vm *VM) Run() error {
 				// Handle class objects
 				classIndex := int(builtinIndex) - len(object.Builtins)
 				classes := object.CreateClassObjects()
-				classNames := []string{"time", "os", "math", "string"}
+				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg"}
 				if classIndex < len(classNames) {
 					className := classNames[classIndex]
 					if classObj, ok := classes[className]; ok {
@@ -502,6 +508,26 @@ func (vm *VM) executeNegateOperator() error {
 
 	value := operand.(*object.Integer).Value
 	return vm.push(&object.Integer{Value: -value})
+}
+
+func (vm *VM) executeLogicalOperation(op code.Opcode) error {
+	right := vm.pop()
+	left := vm.pop()
+
+	leftTruthy := isTruthy(left)
+	rightTruthy := isTruthy(right)
+
+	var result bool
+	switch op {
+	case code.OpAnd:
+		result = leftTruthy && rightTruthy
+	case code.OpOr:
+		result = leftTruthy || rightTruthy
+	default:
+		return fmt.Errorf("Unknown logical operator: %d", op)
+	}
+
+	return vm.push(nativeBoolToBooleanObject(result))
 }
 
 func (vm *VM) buildArray(startIndex, endIndex int) object.Object {

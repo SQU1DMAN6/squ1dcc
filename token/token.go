@@ -49,6 +49,9 @@ const (
 	COLON     = ":"
 	DOT       = "."
 	COMMENT   = "COMMENT"
+	AND       = "AND"
+	OR        = "OR"
+	BACKTICK  = "BACKTICK"
 )
 
 var keywords = map[string]TokenType{
@@ -56,12 +59,14 @@ var keywords = map[string]TokenType{
 	"var":    LET,
 	"true":   TRUE,
 	"false":  FALSE,
-	"null":   NULL,
+	"nullus": NULL,
 	"if":     IF,
 	"el":     ELSE,
 	"elif":   ELIF,
 	"while":  WHILE,
 	"return": RETURN,
+	"ac":     AND,
+	"aut":    OR,
 }
 
 func LookupIdent(ident string) TokenType {

@@ -6,10 +6,10 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"squ1d++/pkg"
 	"strconv"
 	"strings"
 	"time"
-	"squ1d++/pkg"
 )
 
 func createBuiltin(fn BuiltinFunction, class string) *Builtin {
@@ -24,7 +24,6 @@ var Builtins = []struct {
 	Name    string
 	Builtin *Builtin
 }{
-	// Core builtins (no specific class)
 	{
 		"cat",
 		createBuiltin(func(args ...Object) Object {
@@ -40,7 +39,7 @@ var Builtins = []struct {
 			default:
 				return newError("Argument 0 to `cat` is not supported, got %s", args[0].Type())
 			}
-		}, ""),
+		}, "io"),
 	},
 	{
 		"tp",
@@ -69,7 +68,38 @@ var Builtins = []struct {
 			default:
 				return &String{Value: "Null"}
 			}
-		}, ""),
+		}, "type"),
+	},
+
+	{
+		"i2fl",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			int, ok := args[0].(*Integer)
+			if !ok {
+				return newError("Argument 0 to `i2fl` must be INTEGER, got %s", args[0].Type())
+			}
+
+			return &Float{Value: float64(int.Value)}
+		}, "type"),
+	},
+	{
+		"fl2i",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			fl, ok := args[0].(*Float)
+			if !ok {
+				return newError("Argument 0 to `fl2i` must be FLOAT, got %s", args[0].Type())
+			}
+
+			return &Integer{Value: int64(fl.Value)}
+		}, "type"),
 	},
 	{
 		"append",
@@ -89,10 +119,8 @@ var Builtins = []struct {
 			newElements[length] = args[1]
 
 			return &Array{Elements: newElements}
-		}, ""),
+		}, "io"),
 	},
-
-	// Base builtins (no attributes)
 	{
 		"read",
 		createBuiltin(func(args ...Object) Object {
@@ -126,7 +154,7 @@ var Builtins = []struct {
 			}
 
 			return value
-		}, ""),
+		}, "io"),
 	},
 	{
 		"write",
@@ -137,7 +165,7 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: strings.Join(elements, "")}
-		}, ""),
+		}, "io"),
 	},
 	{
 		"null",
@@ -367,36 +395,6 @@ var Builtins = []struct {
 		}, "math"),
 	},
 	{
-		"i2fl",
-		createBuiltin(func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
-			}
-
-			int, ok := args[0].(*Integer)
-			if !ok {
-				return newError("Argument 0 to `i2fl` must be INTEGER, got %s", args[0].Type())
-			}
-
-			return &Float{Value: float64(int.Value)}
-		}, "math"),
-	},
-	{
-		"fl2i",
-		createBuiltin(func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
-			}
-
-			fl, ok := args[0].(*Float)
-			if !ok {
-				return newError("Argument 0 to `fl2i` must be FLOAT, got %s", args[0].Type())
-			}
-
-			return &Integer{Value: int64(fl.Value)}
-		}, "math"),
-	},
-	{
 		"include",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 1 {
@@ -418,10 +416,10 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: string(content)}
-		}, ""),
+		}, "pkg"),
 	},
 	{
-		"pkg_create",
+		"create",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) < 1 || len(args) > 2 {
 				return newError("Wrong number of arguments. Expected 1 or 2, got %d", len(args))
@@ -447,10 +445,10 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: "Package '" + name.Value + "' created successfully"}
-		}, ""),
+		}, "pkg"),
 	},
 	{
-		"pkg_list",
+		"list",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 0 {
 				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
@@ -466,27 +464,27 @@ var Builtins = []struct {
 			for i, pkg := range packages {
 				// Create a hash for each package
 				pairs := make(map[HashKey]HashPair)
-				
+
 				nameKey := &String{Value: "name"}
 				nameValue := &String{Value: pkg.Name}
 				pairs[nameKey.HashKey()] = HashPair{Key: nameKey, Value: nameValue}
-				
+
 				versionKey := &String{Value: "version"}
 				versionValue := &String{Value: pkg.Version}
 				pairs[versionKey.HashKey()] = HashPair{Key: versionKey, Value: versionValue}
-				
+
 				descKey := &String{Value: "description"}
 				descValue := &String{Value: pkg.Description}
 				pairs[descKey.HashKey()] = HashPair{Key: descKey, Value: descValue}
-				
+
 				elements[i] = &Hash{Pairs: pairs}
 			}
 
 			return &Array{Elements: elements}
-		}, ""),
+		}, "pkg"),
 	},
 	{
-		"pkg_remove",
+		"remove",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 1 {
 				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
@@ -503,7 +501,7 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: "Package '" + name.Value + "' removed successfully"}
-		}, ""),
+		}, "pkg"),
 	},
 	// String builtins
 	{
@@ -551,6 +549,88 @@ var Builtins = []struct {
 			return &String{Value: strings.TrimSpace(str.Value)}
 		}, "string"),
 	},
+	// File builtins
+	{
+		"read",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			fileName, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `read` must be STRING, got %s", args[0].Type())
+			}
+
+			content, err := os.ReadFile(fileName.Value)
+
+			if err != nil {
+				return newError("Failed to read file: %s", err)
+			}
+
+			return &String{Value: string(content)}
+		}, "file"),
+	},
+	{
+		"write",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 2 && len(args) != 3 {
+				return newError("Wrong number of arguments. Expected 2 or 3, got %d", len(args))
+			}
+
+			filepath, ok1 := args[0].(*String)
+			data, ok2 := args[1].(*String)
+
+			if !ok1 || !ok2 {
+				return newError("Arguments 0 and 1 to `write` must be STRING and STRING, got %s and %s", args[0].Type(), args[1].Type())
+			}
+
+			if len(args) == 3 {
+				permissions, ok := args[2].(*Integer)
+				if !ok {
+					return newError("Argument 2 to `write` must be INTEGER, got %s", args[2].Type())
+				}
+
+				_, err2 := os.Stat(filepath.Value)
+				if err2 != nil {
+					if os.IsNotExist(err2) {
+						newfile, err3 := os.Create(filepath.Value)
+						if err3 != nil {
+							return newError("Error writing out file: %s", err3)
+						}
+						defer newfile.Close()
+					} else {
+						return newError("Error opening file: %s", err2)
+					}
+				}
+
+				err := os.WriteFile(filepath.Value, []byte(data.Value), os.FileMode(permissions.Value))
+				if err != nil {
+					return newError("Error writing file: %s", err)
+				}
+				return &Integer{Value: 0}
+			}
+
+			_, err2 := os.Stat(filepath.Value)
+			if err2 != nil {
+				if os.IsNotExist(err2) {
+					newfile, err3 := os.Create(filepath.Value)
+					if err3 != nil {
+						return newError("Error writing out file: %s", err3)
+					}
+					defer newfile.Close()
+				} else {
+					return newError("Error opening file: %s", err2)
+				}
+			}
+
+			err := os.WriteFile(filepath.Value, []byte(data.Value), 0755)
+			if err != nil {
+				return newError("Error writing file: %s", err)
+			}
+			return &Integer{Value: 0}
+		}, "file"),
+	},
 }
 
 func newError(format string, a ...interface{}) *Error {
@@ -570,10 +650,14 @@ func GetBuiltinByName(name string) *Builtin {
 func CreateClassObjects() map[string]Object {
 	classes := make(map[string]Object)
 
+	ioClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	typeClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	timeClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	osClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	mathClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	stringClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	fileClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	pkgClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 
 	for _, def := range Builtins {
 		if def.Builtin.Class != "" {
@@ -581,6 +665,10 @@ func CreateClassObjects() map[string]Object {
 			key := funcName.HashKey()
 
 			switch def.Builtin.Class {
+			case "io":
+				ioClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "type":
+				typeClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "time":
 				timeClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "os":
@@ -589,14 +677,33 @@ func CreateClassObjects() map[string]Object {
 				mathClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "string":
 				stringClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "file":
+				fileClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "pkg":
+				pkgClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			}
 		}
 	}
 
+	classes["io"] = ioClass
+	classes["type"] = typeClass
 	classes["time"] = timeClass
 	classes["os"] = osClass
 	classes["math"] = mathClass
 	classes["string"] = stringClass
+	classes["file"] = fileClass
+	classes["pkg"] = pkgClass
 
 	return classes
+}
+
+func ListDefinedClasses() string {
+	classes := CreateClassObjects()
+	var classNames []string
+	for className := range classes {
+		classNames = append(classNames, className)
+	}
+	// optional: sort them alphabetically
+	// sort.Strings(classNames)
+	return strings.Join(classNames, ", ")
 }

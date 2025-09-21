@@ -174,6 +174,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpEqual)
 		case "!=":
 			c.emit(code.OpNotEqual)
+		case "ac":
+			c.emit(code.OpAnd)
+		case "aut":
+			c.emit(code.OpOr)
 		case "=":
 			// Handle assignment
 			if ident, ok := node.Left.(*ast.Identifier); ok {
