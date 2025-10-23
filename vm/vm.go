@@ -683,7 +683,6 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	args := vm.stack[vm.sp-numArgs : vm.sp]
-
 	result := builtin.Fn(args...)
 	vm.sp = vm.sp - numArgs - 1
 
@@ -780,4 +779,62 @@ func (vm *VM) pushFrame(f *Frame) {
 func (vm *VM) popFrame() *Frame {
 	vm.framesIndex--
 	return vm.frames[vm.framesIndex]
+}
+
+// TriggerEvent executes registered GUI event handlers (closures) for the
+// given event name. Handlers are looked up from object.GUIEventHandlers.
+// Each handler must be a *object.Closure; the number of provided args must
+// match the closure's parameter count. The method will run the VM until the
+// handler returns before continuing to the next handler.
+func (vm *VM) TriggerEvent(eventName string, args ...object.Object) error {
+	if object.GUIEventHandlers == nil {
+		return nil
+	}
+
+	handlers := object.GUIEventHandlers[eventName]
+	if len(handlers) == 0 {
+		return nil
+	}
+
+	for _, h := range handlers {
+		cl, ok := h.(*object.Closure)
+		if !ok {
+			// non-callable handlers are ignored
+			continue
+		}
+
+		// Parameter count must match
+		if len(args) != cl.Fn.NumParameters {
+			return fmt.Errorf("handler parameter mismatch for event '%s': expected %d, got %d",
+				eventName, cl.Fn.NumParameters, len(args))
+		}
+
+		// Push the closure followed by its arguments (same layout as the
+		// compiler produces before OpCall), then call the closure.
+		if err := vm.push(cl); err != nil {
+			return err
+		}
+		for _, a := range args {
+			if err := vm.push(a); err != nil {
+				return err
+			}
+		}
+
+		if err := vm.callClosure(cl, len(args)); err != nil {
+			return err
+		}
+
+		// Run VM until handler returns (the Run loop will execute frames on
+		// top of the stack and return when there's nothing left to run).
+		if err := vm.Run(); err != nil {
+			return err
+		}
+
+		// Clean up any return value left on the stack from the handler.
+		if vm.sp > 0 {
+			vm.pop()
+		}
+	}
+
+	return nil
 }

@@ -42,6 +42,19 @@ func New() *Compiler {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
 
+	// Also define class objects (so code compiled with a fresh compiler can
+	// reference class names like `array.cat`). Use the same order as the VM
+	// / REPL expects.
+	classes := object.CreateClassObjects()
+	builtinCount := len(object.Builtins)
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
+	for _, className := range classNames {
+		if _, ok := classes[className]; ok {
+			symbolTable.DefineBuiltin(builtinCount, className)
+			builtinCount++
+		}
+	}
+
 	return &Compiler{
 		constants:   []object.Object{},
 		symbolTable: symbolTable,
@@ -466,9 +479,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
 		}
 
-		// Note: allow builtins even if they belong to a class — they are also
-		// accessible directly by name. Previously this code prevented direct
-		// usage of class-scoped builtins which caused test failures.
+		// If this symbol is a builtin that belongs to a class, require dot
+		// notation (e.g., array.append) to access it. Prevent calling class
+		// scoped builtins by bare name at compile-time so dot-notation works.
+		if symbol.Scope == BuiltinScope {
+			if symbol.Index >= 0 && symbol.Index < len(object.Builtins) {
+				def := object.Builtins[symbol.Index]
+				if def.Builtin != nil && def.Builtin.Class != "" {
+					return fmt.Errorf("line %d, column %d: Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Token.Line, node.Token.Column, node.Value, def.Builtin.Class, node.Value)
+				}
+			}
+		}
 
 		c.loadSymbol(symbol)
 

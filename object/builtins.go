@@ -758,6 +758,11 @@ func GetBuiltinByName(name string) *Builtin {
 	return nil
 }
 
+// GUIEventHandlers stores registered GUI event handlers (Function or Closure
+// objects). Execution of these handlers requires VM context and is handled
+// elsewhere; this map is a registry only.
+var GUIEventHandlers map[string][]Object
+
 func CreateClassObjects() map[string]Object {
 	classes := make(map[string]Object)
 

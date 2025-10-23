@@ -145,8 +145,8 @@ func (s *String) HashKey() HashKey {
 }
 
 type Builtin struct {
-	Fn        BuiltinFunction
-	Class     string
+	Fn         BuiltinFunction
+	Class      string
 	Attributes map[string]Object
 }
 
