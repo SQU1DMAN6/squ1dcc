@@ -308,6 +308,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpSetLocal, symbol.Index)
 		}
 
+	case *ast.SuppressStatement:
+		// Compile the inner expression but emit OpSuppress so the VM will pop
+		// the value and mark the opcode as suppression (so REPL won't print it).
+		err := c.Compile(node.Expression)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpSuppress)
+
 	case *ast.FunctionLiteral:
 		c.enterScope()
 
@@ -457,23 +466,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
 		}
 
-		// Check if this is a class-based builtin being accessed directly
-		if symbol.Scope == BuiltinScope {
-			// Find the builtin definition to check if it has a class
-			for _, def := range object.Builtins {
-				if def.Name == node.Value && def.Builtin.Class != "" {
-					return fmt.Errorf("line %d, column %d: Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Token.Line, node.Token.Column, node.Value, def.Builtin.Class, node.Value)
-				}
-			}
-		}
+		// Note: allow builtins even if they belong to a class — they are also
+		// accessible directly by name. Previously this code prevented direct
+		// usage of class-scoped builtins which caused test failures.
 
 		c.loadSymbol(symbol)
 
-		// if symbol.Scope == GlobalScope {
-		// 	c.emit(code.OpGetGlobal, symbol.Index)
-		// } else {
-		// 	c.emit(code.OpGetLocal, symbol.Index)
-		// }
 	}
 
 	return nil

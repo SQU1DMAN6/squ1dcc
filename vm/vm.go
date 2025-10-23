@@ -241,7 +241,7 @@ func (vm *VM) Run() error {
 				// Handle class objects
 				classIndex := int(builtinIndex) - len(object.Builtins)
 				classes := object.CreateClassObjects()
-				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg"}
+				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
 				if classIndex < len(classNames) {
 					className := classNames[classIndex]
 					if classObj, ok := classes[className]; ok {
@@ -305,6 +305,15 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpPop:
+			if vm.sp > 0 {
+				vm.pop()
+			}
+
+		case code.OpSuppress:
+			// Similar to OpPop but mark lastOpcode as OpSuppress (vm.lastOpcode is
+			// already set to op before executing), so REPL/LastPoppedStackElem can
+			// detect suppression and avoid printing. Still evaluate the expression
+			// (it was previously pushed) and then discard the value.
 			if vm.sp > 0 {
 				vm.pop()
 			}
@@ -750,6 +759,10 @@ func (vm *VM) StackTop() object.Object {
 func (vm *VM) LastPoppedStackElem() object.Object {
 	// Don't return values for variable assignments - they should be "pure" statements
 	if vm.lastOpcode == code.OpSetGlobal || vm.lastOpcode == code.OpSetLocal {
+		return nil
+	}
+	// Also suppress printing when the last opcode was OpSuppress
+	if vm.lastOpcode == code.OpSuppress {
 		return nil
 	}
 	return vm.stack[vm.sp]

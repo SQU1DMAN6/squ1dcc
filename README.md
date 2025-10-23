@@ -83,6 +83,14 @@ var name = "SQU1DLang";
 var isActive = true;
 ```
 
+And can be reassigned using `=`:
+
+```squ1d
+x = x + 1;
+y = "Hello";
+isActive = false;
+```
+
 Variable names must start with a letter or underscore and can contain letters, digits, and underscores.
 
 ## Functions
@@ -483,7 +491,7 @@ write("The sum is: ", sum);
 
 ## Compiler Architecture
 
-SQU1DLang is implemented as a complete compiler with the following components:
+SQU1DLang is implemented as a complete compiler called Squ1d++ with the following components:
 
 - **Lexer**: Tokenizes source code into tokens
 - **Parser**: Builds an Abstract Syntax Tree (AST) from tokens
@@ -500,7 +508,7 @@ SQU1DLang is implemented as a complete compiler with the following components:
 To start an interactive session where you can type SQU1DLang code and see the results immediately:
 
 ```bash
-go run .
+squ1d++
 ```
 
 ### Running Files
@@ -508,7 +516,7 @@ go run .
 To execute a SQU1DLang file:
 
 ```bash
-go run . filename.sqd
+squ1d++ filename.sqd
 ```
 
 ### Compiling to Executable
@@ -516,7 +524,7 @@ go run . filename.sqd
 To compile a SQU1DLang file to a standalone executable:
 
 ```bash
-go run . -B input.sqd -o output
+squ1d++ -B input.sqd -o output
 ```
 
 This creates a standalone executable that doesn't require Go to run.

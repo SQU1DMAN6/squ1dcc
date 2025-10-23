@@ -25,23 +25,6 @@ var Builtins = []struct {
 	Builtin *Builtin
 }{
 	{
-		"cat",
-		createBuiltin(func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
-			}
-
-			switch arg := args[0].(type) {
-			case *Array:
-				return &Integer{Value: int64(len(arg.Elements))}
-			case *String:
-				return &Integer{Value: int64(len(arg.Value))}
-			default:
-				return newError("Argument 0 to `cat` is not supported, got %s", args[0].Type())
-			}
-		}, "io"),
-	},
-	{
 		"tp",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 1 {
@@ -114,12 +97,12 @@ var Builtins = []struct {
 			}
 
 			length := len(arr.Elements)
-			newElements := make([]Object, length+1, length+1)
+			newElements := make([]Object, length+1)
 			copy(newElements, arr.Elements)
 			newElements[length] = args[1]
 
 			return &Array{Elements: newElements}
-		}, "io"),
+		}, "array"),
 	},
 	{
 		"read",
@@ -549,6 +532,45 @@ var Builtins = []struct {
 			return &String{Value: strings.TrimSpace(str.Value)}
 		}, "string"),
 	},
+	{
+		"sepr",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("Wrong number of arguments. Expected 1 or 2, got %d", len(args))
+			}
+
+			str, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `sepr` must be STRING, got %s", args[0].Type())
+			}
+
+			sep := ""
+			if len(args) == 2 {
+				s, ok := args[1].(*String)
+				if !ok {
+					return newError("Argument 1 to `sepr` must be STRING, got %s", args[1].Type())
+				}
+				sep = s.Value
+			}
+
+			var parts []string
+			if sep == "" {
+				// Split into individual characters
+				for _, r := range str.Value {
+					parts = append(parts, string(r))
+				}
+			} else {
+				parts = strings.Split(str.Value, sep)
+			}
+
+			elements := make([]Object, len(parts))
+			for i, p := range parts {
+				elements[i] = &String{Value: p}
+			}
+
+			return &Array{Elements: elements}
+		}, "string"),
+	},
 	// File builtins
 	{
 		"read",
@@ -631,6 +653,95 @@ var Builtins = []struct {
 			return &Integer{Value: 0}
 		}, "file"),
 	},
+	{
+		"pop",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			array, ok := args[0].(*Array)
+			if !ok {
+				return newError("Argument 0 to `pop` must be ARRAY, got %s", args[0].Type())
+			}
+
+			length := len(array.Elements)
+			if length == 0 {
+				return &Null{}
+			}
+
+			array.Elements = array.Elements[:length-1]
+			return array
+		}, "array"),
+	},
+	{
+		"remove",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("Wrong number of arguments. Expected 2, got %d", len(args))
+			}
+
+			array, ok := args[0].(*Array)
+			if !ok {
+				return newError("Argument 0 to `remove` must be ARRAY, got %s", args[0].Type())
+			}
+
+			indexObj, ok := args[1].(*Integer)
+			if !ok {
+				return newError("Argument 1 to `remove` must be INTEGER, got %s", args[1].Type())
+			}
+
+			index := int(indexObj.Value)
+			if index < 0 || index >= len(array.Elements) {
+				return newError("Index %d is out of range (array length is %d)", index, len(array.Elements))
+			}
+
+			array.Elements = append(array.Elements[:index], array.Elements[index+1:]...)
+			return array
+		}, "array"),
+	},
+	{
+		"cat",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			switch arg := args[0].(type) {
+			case *Array:
+				return &Integer{Value: int64(len(arg.Elements))}
+			case *String:
+				return &Integer{Value: int64(len(arg.Value))}
+			default:
+				return newError("Argument 0 to `cat` is not supported, got %s", args[0].Type())
+			}
+		}, "array"),
+	},
+	{
+		"join",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("Wrong number of arguments. Expected 2, got %d", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("Argument 0 to `join` must be ARRAY, got %s", args[0].Type())
+			}
+
+			sep, ok := args[1].(*String)
+			if !ok {
+				return newError("Argument 1 to `join` must be STRING, got %s", args[1].Type())
+			}
+
+			strs := make([]string, len(arr.Elements))
+			for i, el := range arr.Elements {
+				strs[i] = el.Inspect()
+			}
+
+			return &String{Value: strings.Join(strs, sep.Value)}
+		}, "array"),
+	},
 }
 
 func newError(format string, a ...interface{}) *Error {
@@ -658,6 +769,7 @@ func CreateClassObjects() map[string]Object {
 	stringClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	fileClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	pkgClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	arrayClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 
 	for _, def := range Builtins {
 		if def.Builtin.Class != "" {
@@ -681,6 +793,8 @@ func CreateClassObjects() map[string]Object {
 				fileClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "pkg":
 				pkgClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "array":
+				arrayClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			}
 		}
 	}
@@ -693,6 +807,7 @@ func CreateClassObjects() map[string]Object {
 	classes["string"] = stringClass
 	classes["file"] = fileClass
 	classes["pkg"] = pkgClass
+	classes["array"] = arrayClass
 
 	return classes
 }

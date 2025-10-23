@@ -541,6 +541,14 @@ func (p *Parser) parseMLStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+func (p *Parser) parseBashBlock() ast.Expression {
+	// This function was removed when bash blocks were disabled. Preserve a
+	// graceful behavior: if someone still calls it, return an empty string
+	// literal and record an error.
+	p.errors = append(p.errors, fmt.Sprintf("line %d, column %d: bash blocks are disabled", p.curToken.Line, p.curToken.Column))
+	return &ast.StringLiteral{Token: p.curToken, Value: ""}
+}
+
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	array := &ast.ArrayLiteral{Token: p.curToken}
 
@@ -603,9 +611,25 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseReturnStatement()
 	case token.WHILE:
 		return p.parseWhileStatement()
+	case token.SUPPRESS:
+		return p.parseSuppressStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
+}
+
+func (p *Parser) parseSuppressStatement() *ast.SuppressStatement {
+	stmt := &ast.SuppressStatement{Token: p.curToken}
+
+	// Move to the next token to parse the inner expression
+	p.nextToken()
+	stmt.Expression = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {

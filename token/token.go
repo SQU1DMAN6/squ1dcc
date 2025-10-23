@@ -52,21 +52,23 @@ const (
 	AND       = "AND"
 	OR        = "OR"
 	BACKTICK  = "BACKTICK"
+	SUPPRESS  = "SUPPRESS"
 )
 
 var keywords = map[string]TokenType{
-	"def":    FUNCTION,
-	"var":    LET,
-	"true":   TRUE,
-	"false":  FALSE,
-	"nullus": NULL,
-	"if":     IF,
-	"el":     ELSE,
-	"elif":   ELIF,
-	"while":  WHILE,
-	"return": RETURN,
-	"ac":     AND,
-	"aut":    OR,
+	"def":      FUNCTION,
+	"var":      LET,
+	"true":     TRUE,
+	"false":    FALSE,
+	"nullus":   NULL,
+	"if":       IF,
+	"el":       ELSE,
+	"elif":     ELIF,
+	"while":    WHILE,
+	"return":   RETURN,
+	"ac":       AND,
+	"aut":      OR,
+	"suppress": SUPPRESS,
 }
 
 func LookupIdent(ident string) TokenType {

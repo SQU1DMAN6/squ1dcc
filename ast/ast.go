@@ -408,3 +408,19 @@ func (es *ExpressionStatement) String() string {
 	}
 	return ""
 }
+
+// SuppressStatement represents a statement prefixed with the `suppress` keyword.
+// It evaluates the inner expression but indicates the VM/REPL should not print the result.
+type SuppressStatement struct {
+	Token      token.Token
+	Expression Expression
+}
+
+func (ss *SuppressStatement) statementNode()       {}
+func (ss *SuppressStatement) TokenLiteral() string { return ss.Token.Literal }
+func (ss *SuppressStatement) String() string {
+	if ss.Expression != nil {
+		return "suppress " + ss.Expression.String()
+	}
+	return "suppress"
+}
