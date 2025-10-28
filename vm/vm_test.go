@@ -683,28 +683,28 @@ func TestRecursiveFunctions(t *testing.T) {
 
 func TestBuiltinFunctions(t *testing.T) {
 	tests := []vmTestCase{
-		{`cat("")`, 0},
-		{`cat("four")`, 4},
-		{`cat("Hello, World!")`, 13},
-		{`cat([1, 2, 3])`, 3},
-		{`cat([])`, 0},
+		{`array.cat("")`, 0},
+		{`array.cat("four")`, 4},
+		{`array.cat("Hello, World!")`, 13},
+		{`array.cat([1, 2, 3])`, 3},
+		{`array.cat([])`, 0},
 		{
-			`cat("one", "two")`,
+			`array.cat("one", "two")`,
 			&object.Error{
 				Message: "Wrong number of arguments. Expected 1, got 2",
 			},
 		},
 		{
-			`cat(1)`,
+			`array.cat(1)`,
 			&object.Error{
 				Message: "Argument 0 to `cat` is not supported, got INTEGER",
 			},
 		},
 		{
-			`append([], 1)`, []int{1},
+			`array.append([], 1)`, []int{1},
 		},
 		{
-			`append(1, 1)`,
+			`array.append(1, 1)`,
 			&object.Error{
 				Message: "Argument 0 to `append` must be ARRAY, got INTEGER",
 			},

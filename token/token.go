@@ -60,14 +60,14 @@ var keywords = map[string]TokenType{
 	"var":      LET,
 	"true":     TRUE,
 	"false":    FALSE,
-	"nullus":   NULL,
+	"null":     NULL,
 	"if":       IF,
 	"el":       ELSE,
 	"elif":     ELIF,
 	"while":    WHILE,
 	"return":   RETURN,
-	"ac":       AND,
-	"aut":      OR,
+	"and":      AND,
+	"or":       OR,
 	"suppress": SUPPRESS,
 }
 

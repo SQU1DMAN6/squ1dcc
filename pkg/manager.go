@@ -44,7 +44,7 @@ func (pm *Manager) CreatePackage(name, description string) error {
 		return fmt.Errorf("Failed to create package directory: %v", err)
 	}
 
-	initFile := filepath.Join(packagePath, "__init__.sqd")
+	initFile := filepath.Join(packagePath, "main.sqd")
 	initContent := fmt.Sprintf(`# Package: %s
 # Description: %s
 # Version: 1.0.0
@@ -54,7 +54,7 @@ func (pm *Manager) CreatePackage(name, description string) error {
 
 	err = os.WriteFile(initFile, []byte(initContent), 0644)
 	if err != nil {
-		return fmt.Errorf("Failed to create __init__.sqd: %v", err)
+		return fmt.Errorf("Failed to create main.sqd: %v", err)
 	}
 
 	metadataFile := filepath.Join(packagePath, "package.json")
@@ -62,8 +62,8 @@ func (pm *Manager) CreatePackage(name, description string) error {
   "name": "%s",
   "version": "1.0.0",
   "description": "%s",
-  "main": "__init__.sqd",
-  "files": ["__init__.sqd"]
+  "main": "main.sqd",
+  "files": ["main.sqd"]
 }`, name, description)
 
 	err = os.WriteFile(metadataFile, []byte(metadataContent), 0644)

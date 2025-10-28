@@ -361,16 +361,16 @@ func TestBuiltinFunctions(t *testing.T) {
 		input    string
 		expected interface{}
 	}{
-		{`cat("")`, 0},
-		{`cat("four")`, 4},
-		{`cat("hello world")`, 11},
-		{`cat(1)`, "Argument 0 to `cat` is not supported, got INTEGER"},
-		{`cat("one", "two")`, "Wrong number of arguments. Expected 1, got 2"},
-		{`cat([1, 2, 3])`, 3},
-		{`cat([])`, 0},
-		{`write("hello", "world!")`, nil},
-		{`append([], 1)`, []int{1}},
-		{`append(1, 1)`, "Argument 0 to `append` must be ARRAY, got INTEGER"},
+		{`array.cat("")`, 0},
+		{`array.cat("four")`, 4},
+		{`array.cat("hello world")`, 11},
+		{`array.cat(1)`, "Argument 0 to `cat` is not supported, got INTEGER"},
+		{`array.cat("one", "two")`, "Wrong number of arguments. Expected 1, got 2"},
+		{`array.cat([1, 2, 3])`, 3},
+		{`array.cat([])`, 0},
+		{`io.write("hello", "world!")`, nil},
+		{`array.append([], 1)`, []int{1}},
+		{`array.append(1, 1)`, "Argument 0 to `append` must be ARRAY, got INTEGER"},
 	}
 
 	for _, tt := range tests {

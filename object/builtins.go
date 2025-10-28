@@ -85,6 +85,67 @@ var Builtins = []struct {
 		}, "type"),
 	},
 	{
+		"s2i",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			strInteger, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `s2i` must be STRING, got %s", args[0].Type())
+			}
+
+			numInteger, err := strconv.ParseInt(strInteger.Value, 10, 0)
+			if err != nil {
+				return newError("Failed to convert string to integer: %s", err)
+			}
+
+			return &Integer{Value: numInteger}
+		}, "type"),
+	},
+	{
+		"s2fl",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expeceted 1, got %d", len(args))
+			}
+
+			stringFloat, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `s2fl` must be STRING, got %s", args[0].Type())
+			}
+
+			numFloat, err := strconv.ParseFloat(stringFloat.Value, 10)
+			if err != nil {
+				return newError("Failed to convert string to integer: %s", err)
+			}
+
+			return &Float{Value: numFloat}
+		}, "type"),
+	},
+	{
+		"d2s",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			var stringValue string
+
+			switch v := args[0].(type) {
+			case *Integer:
+				stringValue = fmt.Sprint(v.Value)
+			case *Float:
+				stringValue = fmt.Sprint(v.Value)
+			default:
+				return newError("Argument to `d2s` must be FLOAT or INTEGER, got %s", args[0].Type())
+			}
+
+			return &String{Value: stringValue}
+		}, "type"),
+	},
+	{
 		"append",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 2 {
@@ -147,17 +208,8 @@ var Builtins = []struct {
 				elements = append(elements, arg.Inspect())
 			}
 
-			return &String{Value: strings.Join(elements, "")}
+			return &String{Value: strings.Join(elements, " ")}
 		}, "io"),
-	},
-	{
-		"null",
-		createBuiltin(func(args ...Object) Object {
-			if len(args) != 0 {
-				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
-			}
-			return &Null{}
-		}, ""),
 	},
 	// OS Builtins
 	{
@@ -232,7 +284,7 @@ var Builtins = []struct {
 			}
 
 			time.Sleep(duration)
-			return &Integer{Value: 0}
+			return &Null{}
 		}, "time"),
 	},
 	{

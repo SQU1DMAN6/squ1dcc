@@ -84,7 +84,6 @@ func Start(in io.Reader, out io.Writer) {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
 
-	// Add class objects to globals
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
@@ -103,7 +102,7 @@ func Start(in io.Reader, out io.Writer) {
 		// Read complete input (handling multi-line statements)
 		input := readCompleteInput(scanner, out)
 		if input == "" {
-			return
+			continue
 		}
 
 		// Simple include handling: include("path") or include("name")
@@ -174,7 +173,7 @@ func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[
 		candidates = append(candidates, "lib/"+path+".sqd")
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, home+"/.squ1dlang/packages/"+path+"/__init__.sqd")
+		candidates = append(candidates, home+"/.squ1dlang/packages/"+path+"/main.sqd")
 	}
 
 	var chosen string

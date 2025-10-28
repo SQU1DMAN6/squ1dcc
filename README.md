@@ -40,17 +40,13 @@ SQU1DLang supports the following primitive data types:
 
 ### Floats
 
-Floats can be written with or without quotes:
+Floats can be written and automatically detected if they have a decimal point:
 
 ```squ1d
-'42.5      # Quoted float
-42.5       # Unquoted float
-'-17.25    # Negative quoted float
--17.25     # Negative unquoted float
-'1.123     # Quoted decimal
-1.123      # Unquoted decimal
-'29.24837  # Quoted float
-29.24837   # Unquoted float
+42.37
+-17.25
+1.123
+29.24837
 ```
 
 ### Booleans
@@ -65,6 +61,12 @@ false
 ```squ1d
 "Hello, World!"
 ""
+'Hello, World!'
+`Hello, World!`
+"I said \"Hello\""
+'I said \'Hello\''
+`I said \`Hello\``
+`"I said 'Hello'"`
 ```
 
 ### Null
@@ -93,22 +95,26 @@ isActive = false;
 
 Variable names must start with a letter or underscore and can contain letters, digits, and underscores.
 
+## Suppression
+
+The `suppress` keyword can be used to silence the output of a command in SQU1DLang, but still evaluating it:
+
+```squ1d
+suppress x = type.tp(y)
+suppress 123 + 456
+```
+
 ## Functions
 
 ### Function Declaration
 
-Functions are declared using the `def` keyword, and may be assigned to a variable:
-
-```squ1d
-def(x, y) {
-    return x + y;
-}
-```
+Functions are declared using the `def` keyword, and may be assigned to a variable if one wishes to call them later:
 
 ### Function Calls
 
 ```squ1d
 var result = add(5, 3);
+subtract(10, 4);
 ```
 
 ### Anonymous Functions
@@ -116,12 +122,12 @@ var result = add(5, 3);
 ```squ1d
 def(x, y) {
     return x * y;
-}();
+}(3, 4);
 ```
 
 ### Higher-Order Functions
 
-Functions are first-class objects and can be passed as arguments:
+Functions are first-class objects and can be passed as arguments if one wishes to call them later:
 
 ```squ1d
 var apply = def(fn, x, y) {
@@ -137,9 +143,9 @@ var result = apply(add, 10, 20);
 
 ```squ1d
 if (x > 0) {
-    write("Positive");
+    "Positive";
 } el {
-    write("Negative or zero");
+    "Negative or zero";
 }
 ```
 
@@ -193,74 +199,77 @@ var age = person["age"];
 
 SQU1DLang provides several built-in functions organized into different categories:
 
-### Core Functions
+### I/O Functions:
 
-#### `write(...args)`
+```squ1d
+var input = io.read()
+var output = io.write(input)
+```
 
 Prints values to the console:
 
 ```squ1d
-write("Hello, World!");
-write("Value:", 42);
+io.write("Hello, World!");
+io.write("Value:", 42);
 ```
 
-#### `read([prompt])`
+#### `io.read([prompt])`
 
 Reads input from the user:
 
 ```squ1d
-var input = read();
-var name = read("Enter your name: ");
+var input = io.read();
+var name = io.read("Enter your name: ");
 ```
 
-#### `cat(value)`
+#### `array.cat(value)`
 
 Returns the length of a string or array:
 
 ```squ1d
-var len = cat("hello");        # Returns 5
-var count = cat([1, 2, 3]);    # Returns 3
+var len = array.cat("hello");        # Returns 5
+var count = array.cat([1, 2, 3]);    # Returns 3
 ```
 
-#### `append(array, value)`
+#### `array.append(array, value)`
 
 Adds an element to the end of an array:
 
 ```squ1d
 var numbers = [1, 2, 3];
-var extended = append(numbers, 4);  # Returns [1, 2, 3, 4]
+var extended = array.append(numbers, 4);  # Returns [1, 2, 3, 4]
 ```
 
-#### `tp(value)`
+#### `type.tp(value)`
 
 Returns the type of a value as a string:
 
 ```squ1d
-tp(42);        # Returns "Integer"
-tp("hello");   # Returns "String"
-tp([1, 2]);    # Returns "Array"
-tp({});        # Returns "Object"
-tp(true);      # Returns "Boolean"
+type.tp(42);        # Returns "Integer"
+type.tp("hello");   # Returns "String"
+type.tp([1, 2]);    # Returns "Array"
+type.tp({});        # Returns "Object"
+type.tp(true);      # Returns "Boolean"
 ```
 
 ### Math Functions
 
-#### `abs(value)`
+#### `math.abs(value)`
 
 Returns the absolute value of a number:
 
 ```squ1d
-write(abs(-5));    # Returns 5
-write(abs(3.14));  # Returns 3.14
+math.abs(-5)    # Returns 5
+math.abs(3.14)  # Returns 3.14
 ```
 
-#### `sqrt(value)`
+#### `math.sqrt(value)`
 
 Returns the square root of a number:
 
 ```squ1d
-write(sqrt(16));   # Returns 4
-write(sqrt(2));    # Returns 1.4142135623730951
+math.sqrt(16)
+math.sqrt(2)
 ```
 
 #### `pow(base, exponent)`
@@ -274,90 +283,81 @@ write(pow(3, 2));  # Returns 9
 
 #### `sin(value)`, `cos(value)`
 
-Trigonometric functions:
-
-```squ1d
-write(sin(0));     # Returns 0
-write(cos(0));     # Returns 1
-```
-
-#### `pi`, `e`
-
 Mathematical constants:
 
 ```squ1d
-write(pi);         # Returns 3.141592653589793
-write(e);          # Returns 2.718281828459045
+math.pi()   # Returns 3.141592653589793
+math.e()    # Returns 2.718281828459045
 ```
 
 ### String Functions
 
-#### `upper(string)`
+#### `string.upper(string)`
 
 Converts a string to uppercase:
 
 ```squ1d
-write(upper("hello"));  # Returns "HELLO"
+string.upper("hello")  # Returns "HELLO"
 ```
 
-#### `lower(string)`
+#### `string.lower(string)`
 
 Converts a string to lowercase:
 
 ```squ1d
-write(lower("WORLD"));  # Returns "world"
+string.lower("WORLD")  # Returns "world"
 ```
 
-#### `trim(string)`
+#### `string.trim(string)`
 
 Removes whitespace from both ends of a string:
 
 ```squ1d
-write(trim("  hello  "));  # Returns "hello"
+string.trim("  hello  ")  # Returns "hello"
 ```
 
 ### System Functions
 
-#### `env(key)`
+#### `os.env(key)`
 
 Gets an environment variable:
 
 ```squ1d
-write(env("HOME"));  # Returns your home directory
+os.env("HOME")  # Returns your home directory
 ```
 
-#### `exec(command)`
+#### `os.exec(command)`
 
 Executes a system command:
 
 ```squ1d
-write(exec("echo hello"));  # Returns "hello"
+os.exec("echo hello")  # Returns "hello"
 ```
 
-#### `sleep(seconds)`
+#### `time.sleep(seconds)`
 
 Pauses execution for the specified number of seconds:
 
 ```squ1d
-sleep(1);  # Sleep for 1 second
+time.sleep(1);  # Sleep for 1 second
 ```
 
-#### `now()`
+#### `time.now()`
 
 Returns the current timestamp:
 
 ```squ1d
-write(now());  # Returns current Unix timestamp
+time.now()  # Returns current Unix timestamp
 ```
 
 ### Package Management
 
-#### `pkg_create(name, description)`
+#### `create(name, description)`
 
 Creates a new package:
 
 ```squ1d
-pkg_create("mypackage", "A sample package");
+create("mypackage", "A sample package");
 ```
 
 #### `pkg_list()`
@@ -365,7 +365,7 @@ pkg_create("mypackage", "A sample package");
 Lists all available packages:
 
 ```squ1d
-write(pkg_list());
+pkg_list()
 ```
 
 #### `pkg_remove(name)`
@@ -383,7 +383,7 @@ pkg_remove("mypackage");
 Converts an integer to a float:
 
 ```squ1d
-write(i2fl(42));  # Returns 42.0
+i2fl(42)  # Returns 42.0
 ```
 
 #### `fl2i(float)`
@@ -391,7 +391,7 @@ write(i2fl(42));  # Returns 42.0
 Converts a float to an integer:
 
 ```squ1d
-write(fl2i(3.14));  # Returns 3
+fl2i(3.14)  # Returns 3
 ```
 
 ## Operators
@@ -438,7 +438,7 @@ var greeting = "Hello" + " " + "World";
 ### Array Processing
 
 ```squ1d
-def sumArray(arr) {
+var sumArray = def (arr) {
     var total = 0;
     var i = 0;
     while (i < cat(arr)) {
@@ -450,7 +450,7 @@ def sumArray(arr) {
 
 var numbers = [1, 2, 3, 4, 5];
 var total = sumArray(numbers);
-write("Sum:", total);
+io.write("Sum:", total);
 ```
 
 ### Hash Map Example
@@ -462,18 +462,18 @@ var student = {
     "active": true
 };
 
-write("Student:", student["name"]);
-write("Average grade: ", student["grades"][0]);
+io.write("Student:", student["name"]);
+io.write("Average grade: ", student["grades"][0]);
 ```
 
 ### Interactive Program
 
 ```squ1d
-write("Welcome to SQU1DLang Calculator!");
+io.write("Welcome to SQU1DLang Calculator!");
 var num1 = read("Enter first number: ");
 var num2 = read("Enter second number: ");
 var sum = num1 + num2;
-write("The sum is: ", sum);
+io.write("The sum is: ", sum);
 ```
 
 ## Language Features
@@ -535,13 +535,13 @@ SQU1DLang includes a built-in package management system:
 
 ```squ1d
 # Create a new package
-pkg_create("mypackage", "A sample package");
+pkg.create("mypackage", "A sample package");
 
 # List available packages
-write(pkg_list());
+pkg.list()
 
 # Remove a package
-pkg_remove("mypackage");
+pkg.remove("mypackage");
 ```
 
 ### File Includes
@@ -549,10 +549,10 @@ pkg_remove("mypackage");
 You can include other SQU1DLang files using the `include()` function:
 
 ```squ1d
-include("library.sqd");
+pkg.include("library.sqd");
 ```
 
-The include system searches in the current directory, `lib/` directory, and user's package cache.
+The include system searches in the current directory, `./lib/` directory, and user's package cache.
 
 ---
 

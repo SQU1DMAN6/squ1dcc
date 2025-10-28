@@ -109,7 +109,7 @@ func compileToExecutable(inputFile, outputFile string) error {
 					candidates = append(candidates, filepath.Join("lib", inside+".sqd"))
 				}
 				if home, err := os.UserHomeDir(); err == nil {
-					candidates = append(candidates, filepath.Join(home, ".cache", "squ1dlang", inside, "__init__.sqd"))
+					candidates = append(candidates, filepath.Join(home, ".cache", "squ1dlang", inside, "main.sqd"))
 				}
 				var chosen string
 				for _, c := range candidates {
