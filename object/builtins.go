@@ -61,6 +61,10 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
 			}
 
+			if args[0].Type() == FLOAT_OBJ {
+				return args[0]
+			}
+
 			int, ok := args[0].(*Integer)
 			if !ok {
 				return newError("Argument 0 to `i2fl` must be INTEGER, got %s", args[0].Type())
@@ -76,6 +80,10 @@ var Builtins = []struct {
 				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
 			}
 
+			if args[0].Type() == INTEGER_OBJ {
+				return args[0]
+			}
+
 			fl, ok := args[0].(*Float)
 			if !ok {
 				return newError("Argument 0 to `fl2i` must be FLOAT, got %s", args[0].Type())
@@ -89,6 +97,10 @@ var Builtins = []struct {
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 1 {
 				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			if args[0].Type() == INTEGER_OBJ {
+				return args[0]
 			}
 
 			strInteger, ok := args[0].(*String)
@@ -109,6 +121,10 @@ var Builtins = []struct {
 		createBuiltin(func(args ...Object) Object {
 			if len(args) != 1 {
 				return newError("Wrong number of arguments. Expeceted 1, got %d", len(args))
+			}
+
+			if args[0].Type() == FLOAT_OBJ {
+				return args[0]
 			}
 
 			stringFloat, ok := args[0].(*String)
@@ -138,6 +154,8 @@ var Builtins = []struct {
 				stringValue = fmt.Sprint(v.Value)
 			case *Float:
 				stringValue = fmt.Sprint(v.Value)
+			case *String:
+				return args[0]
 			default:
 				return newError("Argument to `d2s` must be FLOAT or INTEGER, got %s", args[0].Type())
 			}
