@@ -87,7 +87,7 @@ func Start(in io.Reader, out io.Writer) {
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -239,7 +239,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)

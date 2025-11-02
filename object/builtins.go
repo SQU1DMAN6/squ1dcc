@@ -282,6 +282,24 @@ var Builtins = []struct {
 			return &String{Value: string(output)}
 		}, "os"),
 	},
+	{
+		"exit",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			status, ok := args[0].(*Integer)
+
+			if !ok {
+				return newError("Argument 0 to `exit` must be INTEGER, got %s", args[0].Type())
+			}
+
+			os.Exit(int(status.Value))
+
+			return &Null{}
+		}, "os"),
+	},
 
 	// Time builtins
 	{
@@ -700,7 +718,7 @@ var Builtins = []struct {
 				if err != nil {
 					return newError("Error writing file: %s", err)
 				}
-				return &Integer{Value: 0}
+				return &Null{}
 			}
 
 			_, err2 := os.Stat(filepath.Value)
@@ -720,7 +738,7 @@ var Builtins = []struct {
 			if err != nil {
 				return newError("Error writing file: %s", err)
 			}
-			return &Integer{Value: 0}
+			return &Null{}
 		}, "file"),
 	},
 	{
@@ -828,9 +846,6 @@ func GetBuiltinByName(name string) *Builtin {
 	return nil
 }
 
-// GUIEventHandlers stores registered GUI event handlers (Function or Closure
-// objects). Execution of these handlers requires VM context and is handled
-// elsewhere; this map is a registry only.
 var GUIEventHandlers map[string][]Object
 
 func CreateClassObjects() map[string]Object {
@@ -845,6 +860,7 @@ func CreateClassObjects() map[string]Object {
 	fileClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	pkgClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 	arrayClass := &Hash{Pairs: make(map[HashKey]HashPair)}
+	sysClass := &Hash{Pairs: make(map[HashKey]HashPair)}
 
 	for _, def := range Builtins {
 		if def.Builtin.Class != "" {
@@ -870,6 +886,8 @@ func CreateClassObjects() map[string]Object {
 				pkgClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			case "array":
 				arrayClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
+			case "sys":
+				sysClass.Pairs[key] = HashPair{Key: funcName, Value: def.Builtin}
 			}
 		}
 	}
@@ -883,6 +901,7 @@ func CreateClassObjects() map[string]Object {
 	classes["file"] = fileClass
 	classes["pkg"] = pkgClass
 	classes["array"] = arrayClass
+	classes["sys"] = sysClass
 
 	return classes
 }

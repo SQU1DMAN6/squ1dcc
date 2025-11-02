@@ -611,6 +611,12 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseReturnStatement()
 	case token.WHILE:
 		return p.parseWhileStatement()
+	case token.FOR:
+		return p.parseForStatement()
+	case token.BREAK:
+		return p.parseBreakStatement()
+	case token.CONTINUE:
+		return p.parseContinueStatement()
 	case token.SUPPRESS:
 		return p.parseSuppressStatement()
 	default:
@@ -618,16 +624,93 @@ func (p *Parser) parseStatement() ast.Statement {
 	}
 }
 
-func (p *Parser) parseSuppressStatement() *ast.SuppressStatement {
+func (p *Parser) parseSuppressStatement() ast.Statement {
 	stmt := &ast.SuppressStatement{Token: p.curToken}
 
-	// Move to the next token to parse the inner expression
 	p.nextToken()
+
 	stmt.Expression = p.parseExpression(LOWEST)
 
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
+
+	return stmt
+}
+
+func (p *Parser) parseBreakStatement() ast.Statement {
+	stmt := &ast.BreakStatement{Token: p.curToken}
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseContinueStatement() ast.Statement {
+	stmt := &ast.ContinueStatement{Token: p.curToken}
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseForStatement() ast.Statement {
+	stmt := &ast.ForStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	// Parse initialization statement (optional)
+	p.nextToken()
+	if !p.curTokenIs(token.SEMICOLON) {
+		if p.curTokenIs(token.LET) {
+			stmt.Init = p.parseLetStatement()
+		} else {
+			expr := p.parseExpression(LOWEST)
+			stmt.Init = &ast.ExpressionStatement{
+				Token:      p.curToken,
+				Expression: expr,
+			}
+			if p.peekTokenIs(token.SEMICOLON) {
+				p.nextToken()
+			}
+		}
+	}
+
+	if !p.curTokenIs(token.SEMICOLON) {
+		return nil
+	}
+
+	// Parse condition expression (optional)
+	p.nextToken()
+	if !p.curTokenIs(token.SEMICOLON) {
+		stmt.Condition = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(token.SEMICOLON) {
+		return nil
+	}
+
+	// Parse update expression (optional)
+	p.nextToken()
+	if !p.curTokenIs(token.RPAREN) {
+		stmt.Update = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
 
 	return stmt
 }

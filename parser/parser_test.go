@@ -330,7 +330,7 @@ func TestIfExpression(t *testing.T) {
 }
 
 func TestIfExpressionWithMultipleExpressions(t *testing.T) {
-	input := `if (1 + 2 == 3 ac true) { x }`
+	input := `if (1 + 2 == 3 and true) { x }`
 
 	l := lexer.New(input)
 	p := New(l)
@@ -351,15 +351,15 @@ func TestIfExpressionWithMultipleExpressions(t *testing.T) {
 		t.Fatalf("stmt.Expression is not ast.IfExpression. Got %T", stmt.Expression)
 	}
 
-	// condition: ((1 + 2) == 3) ac true
+	// condition: ((1 + 2) == 3) and true
 	ifExp, ok := exp.Condition.(*ast.InfixExpression)
 	if !ok {
 		t.Fatalf("exp.Condition is not *ast.InfixExpression. Got %T", exp.Condition)
 	}
 
-	// Check top-level: (...) ac true
-	if ifExp.Operator != "ac" {
-		t.Fatalf("expected operator 'ac', got %q", ifExp.Operator)
+	// Check top-level: (...) and true
+	if ifExp.Operator != "and" {
+		t.Fatalf("expected operator 'and', got %q", ifExp.Operator)
 	}
 	testLiteralExpression(t, ifExp.Right, true)
 

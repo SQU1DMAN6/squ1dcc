@@ -53,6 +53,9 @@ const (
 	OR        = "OR"
 	BACKTICK  = "BACKTICK"
 	SUPPRESS  = "SUPPRESS"
+	BREAK     = "BREAK"
+	CONTINUE  = "CONTINUE"
+	FOR       = "FOR"
 )
 
 var keywords = map[string]TokenType{
@@ -69,6 +72,9 @@ var keywords = map[string]TokenType{
 	"and":      AND,
 	"or":       OR,
 	"suppress": SUPPRESS,
+	"break":    BREAK,
+	"continue": CONTINUE,
+	"for":      FOR,
 }
 
 func LookupIdent(ident string) TokenType {

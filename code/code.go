@@ -46,6 +46,8 @@ const (
 	OpAnd
 	OpOr
 	OpSuppress
+	OpBreak
+	OpContinue
 )
 
 type Definition struct {
@@ -89,6 +91,8 @@ var definitions = map[Opcode]*Definition{
 	OpAnd:            {"OpAnd", []int{}},
 	OpOr:             {"OpOr", []int{}},
 	OpSuppress:       {"OpSuppress", []int{}},
+	OpBreak:          {"OpBreak", []int{}},
+	OpContinue:       {"OpContinue", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

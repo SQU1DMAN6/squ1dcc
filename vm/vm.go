@@ -241,7 +241,7 @@ func (vm *VM) Run() error {
 				// Handle class objects
 				classIndex := int(builtinIndex) - len(object.Builtins)
 				classes := object.CreateClassObjects()
-				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
+				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
 				if classIndex < len(classNames) {
 					className := classNames[classIndex]
 					if classObj, ok := classes[className]; ok {

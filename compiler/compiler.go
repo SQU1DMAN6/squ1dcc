@@ -8,6 +8,12 @@ import (
 	"squ1d++/object"
 )
 
+type LoopContext struct {
+	loopStartPos  int
+	breakJumps    []int
+	continueJumps []int
+}
+
 type Compiler struct {
 	instructions        code.Instructions
 	constants           []object.Object
@@ -16,6 +22,7 @@ type Compiler struct {
 	symbolTable         *SymbolTable
 	scopes              []CompilationScope
 	scopeIndex          int
+	loopContexts        []LoopContext
 }
 
 type EmittedInstruction struct {
@@ -56,11 +63,63 @@ func New() *Compiler {
 	}
 
 	return &Compiler{
-		constants:   []object.Object{},
-		symbolTable: symbolTable,
-		scopes:      []CompilationScope{mainScope},
-		scopeIndex:  0,
+		constants:    []object.Object{},
+		symbolTable:  symbolTable,
+		scopes:       []CompilationScope{mainScope},
+		scopeIndex:   0,
+		loopContexts: []LoopContext{},
 	}
+}
+
+func (c *Compiler) enterLoop(loopStartPos int) {
+	c.loopContexts = append(c.loopContexts, LoopContext{
+		loopStartPos:  loopStartPos,
+		breakJumps:    []int{},
+		continueJumps: []int{},
+	})
+}
+
+func (c *Compiler) exitLoop() {
+	if len(c.loopContexts) == 0 {
+		return
+	}
+
+	// Get the current loop context
+	loopCtx := c.loopContexts[len(c.loopContexts)-1]
+
+	// Patch all break jumps to jump to current position (after loop)
+	afterLoopPos := len(c.currentInstructions())
+	for _, pos := range loopCtx.breakJumps {
+		c.changeOperand(pos, afterLoopPos)
+	}
+
+	// Patch all continue jumps to jump to loop start
+	for _, pos := range loopCtx.continueJumps {
+		c.changeOperand(pos, loopCtx.loopStartPos)
+	}
+
+	// Remove the loop context
+	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
+}
+
+func (c *Compiler) addBreakJump(pos int) error {
+	if len(c.loopContexts) == 0 {
+		return fmt.Errorf("break statement not inside a loop")
+	}
+
+	c.loopContexts[len(c.loopContexts)-1].breakJumps = append(
+		c.loopContexts[len(c.loopContexts)-1].breakJumps, pos)
+	return nil
+}
+
+func (c *Compiler) addContinueJump(pos int) error {
+	if len(c.loopContexts) == 0 {
+		return fmt.Errorf("continue statement not inside a loop")
+	}
+
+	c.loopContexts[len(c.loopContexts)-1].continueJumps = append(
+		c.loopContexts[len(c.loopContexts)-1].continueJumps, pos)
+	return nil
 }
 
 func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
@@ -187,9 +246,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpEqual)
 		case "!=":
 			c.emit(code.OpNotEqual)
-		case "ac":
+		case "and":
 			c.emit(code.OpAnd)
-		case "aut":
+		case "or":
 			c.emit(code.OpOr)
 		case "=":
 			// Handle assignment
@@ -250,6 +309,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.WhileExpression:
 		loopStart := len(c.currentInstructions())
+		c.enterLoop(loopStart)
 
 		err := c.Compile(node.Condition)
 		if err != nil {
@@ -274,11 +334,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		afterLoopPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
 
+		// Exit loop context (patches break/continue jumps)
+		c.exitLoop()
+
 		// Push null as the result of the while loop
 		c.emit(code.OpNull)
 
 	case *ast.WhileStatement:
 		loopStart := len(c.currentInstructions())
+		c.enterLoop(loopStart)
 
 		err := c.Compile(node.Condition)
 		if err != nil {
@@ -303,6 +367,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// Set the jump target for when condition is false
 		afterLoopPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+
+		// Exit loop context (patches break/continue jumps)
+		c.exitLoop()
 
 		// Pop the condition result and push null as the result of the while loop
 		c.emit(code.OpPop)
@@ -329,6 +396,84 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpSuppress)
+
+	case *ast.BreakStatement:
+		jumpPos := c.emit(code.OpJump, 9999)
+		err := c.addBreakJump(jumpPos)
+		if err != nil {
+			return err
+		}
+
+	case *ast.ContinueStatement:
+		jumpPos := c.emit(code.OpJump, 9999)
+		err := c.addContinueJump(jumpPos)
+		if err != nil {
+			return err
+		}
+
+	case *ast.ForStatement:
+		// For loops are compiled as: init; while(condition) { body; update; }
+
+		// Compile initialization
+		if node.Init != nil {
+			err := c.Compile(node.Init)
+			if err != nil {
+				return err
+			}
+			if c.lastInstructionIs(code.OpPop) {
+				c.removeLastPop()
+			}
+		}
+
+		loopStart := len(c.currentInstructions())
+		c.enterLoop(loopStart)
+
+		// Compile condition (default to true if no condition)
+		if node.Condition != nil {
+			err := c.Compile(node.Condition)
+			if err != nil {
+				return err
+			}
+		} else {
+			// No condition means infinite loop (while true)
+			c.emit(code.OpTrue)
+		}
+
+		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+		// Compile body
+		err := c.Compile(node.Body)
+		if err != nil {
+			return err
+		}
+
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		// Compile update expression
+		if node.Update != nil {
+			err := c.Compile(node.Update)
+			if err != nil {
+				return err
+			}
+			if c.lastInstructionIs(code.OpPop) {
+				c.removeLastPop()
+			}
+		}
+
+		// Jump back to condition check
+		c.emit(code.OpJump, loopStart)
+
+		// Set jump target for when condition is false
+		afterLoopPos := len(c.currentInstructions())
+		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
+
+		// Exit loop context (patches break/continue jumps)
+		c.exitLoop()
+
+		// Push null as result
+		c.emit(code.OpNull)
 
 	case *ast.FunctionLiteral:
 		c.enterScope()
