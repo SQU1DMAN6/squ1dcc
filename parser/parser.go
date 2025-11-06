@@ -341,6 +341,13 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	exp := &ast.CallExpression{Token: p.curToken, Function: function}
 	exp.Arguments = p.parseExpressionList(token.RPAREN)
+
+	// Check if there's a block following the call expression (for callback syntax)
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken()
+		exp.Block = p.parseBlockStatement()
+	}
+
 	return exp
 }
 

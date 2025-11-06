@@ -149,13 +149,55 @@ if (x > 0) {
 }
 ```
 
-Note: The `else` keyword is shortened to `el` in SQU1DLang.
-
 ### Conditional Expressions
 
 ```squ1d
 var message = if (x > 0) { "Positive" } el { "Negative" };
 ```
+
+### For loops
+
+```squ1d
+var new_array = [1, 2, 3, 4, 5]
+
+for (var i = 0; i < array.cat(new_array); i = i + 1) {
+        io.echo(new_array[i])
+}
+```
+
+### While loops
+
+While loops can be written in two ways:
+
+1. Using condition
+
+```squ1d
+var new_array = [1, 2, 3, 4, 5]
+var i = 0
+
+while (i < array.cat(new_array)) {
+    io.echo(new_array[i], "\n")
+    suppress i = i + 1
+}
+```
+
+2. Using `true` condition and `break` statement
+
+```squ1d
+var new_array = [1, 2, 3, 4, 5]
+var i = 0
+
+while (true) {
+    suppress if (i >= array.cat(new_array)) {
+        break
+    }
+    suppress io.echo(new_array[i], "\n")
+    suppress i = i + 1
+}
+
+```
+
+Note that a `while (true)` loop should have a break or exit statement to prevent a stack overflow.
 
 ## Data Structures
 
@@ -206,11 +248,18 @@ var input = io.read()
 var output = io.write(input)
 ```
 
-Prints values to the console:
+Returns values to the console:
 
 ```squ1d
 io.write("Hello, World!");
 io.write("Value:", 42);
+```
+
+Prints values to the console:
+
+```squ1d
+io.echo("Hello, World!");
+io.echo("Value:", 42);
 ```
 
 #### `io.read([prompt])`
@@ -272,16 +321,16 @@ math.sqrt(16)
 math.sqrt(2)
 ```
 
-#### `pow(base, exponent)`
+#### `math.pow(base, exponent)`
 
 Returns base raised to the power of exponent:
 
 ```squ1d
-write(pow(2, 3));  # Returns 8
-write(pow(3, 2));  # Returns 9
+io.write(pow(2, 3));  # Returns 8
+io.write(pow(3, 2));  # Returns 9
 ```
 
-#### `sin(value)`, `cos(value)`
+#### `math.sin(value)`, `math.cos(value)`
 
 Mathematical constants:
 
@@ -334,6 +383,18 @@ Executes a system command:
 os.exec("echo hello")  # Returns "hello"
 ```
 
+#### `os.exit(status)`
+
+Exits the program
+
+```squ1d
+if (err) {
+    os.exit(1) # Exit status 1
+} el {
+    os.exit(0) # Exit status 0
+}
+```
+
 #### `time.sleep(seconds)`
 
 Pauses execution for the specified number of seconds:
@@ -352,47 +413,67 @@ time.now()  # Returns current Unix timestamp
 
 ### Package Management
 
-#### `create(name, description)`
+#### `pkg.create(name, description)`
 
 Creates a new package:
 
 ```squ1d
-create("mypackage", "A sample package");
+pkg.create("mypackage", "A sample package");
 ```
 
-#### `pkg_list()`
+#### `pkg.list()`
 
 Lists all available packages:
 
 ```squ1d
-pkg_list()
+pkg.list()
 ```
 
-#### `pkg_remove(name)`
+#### `pkg.remove(name)`
 
 Removes a package:
 
 ```squ1d
-pkg_remove("mypackage");
+pkg.remove("mypackage");
 ```
 
 ### Type Conversion
 
-#### `i2fl(integer)`
+#### `type.i2fl(integer)`
 
 Converts an integer to a float:
 
 ```squ1d
-i2fl(42)  # Returns 42.0
+type.i2fl(42)  # Returns 42.0
 ```
 
-#### `fl2i(float)`
+#### `type.fl2i(float)`
 
 Converts a float to an integer:
 
 ```squ1d
-fl2i(3.14)  # Returns 3
+type.fl2i(3.14)  # Returns 3
 ```
+
+### Keyboard Events
+
+```squ1d
+keyboard.listen()
+```
+
+Constantly listens for keyboard events, often used in a `while` loop, returning a string value when a key is pressed, and returning `null` otherwise.
+
+```squ1d
+keyboard.read()
+```
+
+Reads for a single keyboard event, can be used outside of `while` loops, but holds up the process until a key is pressed, returning a string value when a key is pressed.
+
+```squ1d
+keyboard.stop()
+```
+
+Stops listening for keyboard events.
 
 ## Operators
 
@@ -470,10 +551,45 @@ io.write("Average grade: ", student["grades"][0]);
 
 ```squ1d
 io.write("Welcome to SQU1DLang Calculator!");
-var num1 = read("Enter first number: ");
-var num2 = read("Enter second number: ");
+var num1 = io.read("Enter first number: ");
+var num2 = io.read("Enter second number: ");
 var sum = num1 + num2;
 io.write("The sum is: ", sum);
+```
+
+### Keyboard event listener program
+
+Example using keyboard.read():
+
+```squ1d
+var key = keyboard.read()
+
+io.write(key + " pressed")
+```
+
+Example using keyboard.listen():
+
+```squ1d
+io.write("Press a key to start...")
+var key = null
+
+while (true) {
+    suppress key = keyboard.listen()
+
+    if (type.tp(key) == "String") {
+        io.echo(key + " pressed\r\n")
+    }
+
+    suppress if (key == "KeyQ" or key == "KeyCtrl+C") {
+        break
+    } el {
+        continue
+    }
+}
+
+suppress keyboard.stop()
+io.write("Exiting...")
+os.exit(0)
 ```
 
 ## Language Features

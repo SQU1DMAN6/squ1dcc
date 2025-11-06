@@ -1,0 +1,20 @@
+io.write("Press a key to start...")
+var key = null
+
+while (true) {
+    suppress key = keyboard.listen()
+
+    if (type.tp(key) == "String") {
+        io.echo(key + " pressed\r\n")
+    }
+
+    suppress if (key == "KeyQ" or key == "KeyCtrl+C") {
+        break
+    } el {
+        continue
+    }
+}
+
+suppress keyboard.stop()
+io.write("Exiting...")
+os.exit(0)

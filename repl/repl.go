@@ -15,7 +15,7 @@ import (
 )
 
 const PROMPT = ">> "
-const CONTINUATION_PROMPT = "==>  "
+const CONTINUATION_PROMPT = " > "
 
 // readCompleteInput reads input until a complete statement is entered
 func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
@@ -87,7 +87,7 @@ func Start(in io.Reader, out io.Writer) {
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -140,10 +140,26 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
+		// Prefer the current top-of-stack if present and not null (covers
+		// constructs that push a deliberate result, e.g., while loops that
+		// push null). Otherwise fall back to the last popped element which
+		// is the value of an expression statement.
 		lastPopped := machine.LastPoppedStackElem()
-		if lastPopped != nil {
-			io.WriteString(out, lastPopped.Inspect())
-			io.WriteString(out, "\n")
+		top := machine.StackTop()
+		var toPrint interface{}
+		if top != nil {
+			toPrint = top
+		} else {
+			toPrint = lastPopped
+		}
+
+		if toPrint != nil {
+			if obj, ok := toPrint.(object.Object); ok {
+				if obj.Type() != object.NULL_OBJ {
+					io.WriteString(out, obj.Inspect())
+					io.WriteString(out, "\n")
+				}
+			}
 		}
 	}
 }
@@ -239,7 +255,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
 	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -304,11 +320,25 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return fmt.Errorf("Runtime error in file %s:\t%v\n", filename, err)
 			}
 
-			// Print the result of this statement
+			// Print the result of this statement. Prefer top-of-stack when
+			// available (e.g., loops push null), otherwise use the last
+			// popped value produced by expression statements.
 			lastPopped := machine.LastPoppedStackElem()
-			if lastPopped != nil {
-				io.WriteString(out, lastPopped.Inspect())
-				io.WriteString(out, "\n")
+			top := machine.StackTop()
+			var toPrint interface{}
+			if top != nil {
+				toPrint = top
+			} else {
+				toPrint = lastPopped
+			}
+
+			if toPrint != nil {
+				if obj, ok := toPrint.(object.Object); ok {
+					if obj.Type() != object.NULL_OBJ {
+						io.WriteString(out, obj.Inspect())
+						io.WriteString(out, "\n")
+					}
+				}
 			}
 		} else {
 			// Need more input for this statement, add a newline
@@ -360,11 +390,23 @@ func ExecuteFile(filename string, out io.Writer) error {
 			return fmt.Errorf("Runtime error in file %s: %v", filename, err)
 		}
 
-		// Print the result of this statement
+		// Print the result of this statement (final leftover input chunk).
 		lastPopped := machine.LastPoppedStackElem()
-		if lastPopped != nil {
-			io.WriteString(out, lastPopped.Inspect())
-			io.WriteString(out, "\n")
+		top := machine.StackTop()
+		var toPrint interface{}
+		if top != nil {
+			toPrint = top
+		} else {
+			toPrint = lastPopped
+		}
+
+		if toPrint != nil {
+			if obj, ok := toPrint.(object.Object); ok {
+				if obj.Type() != object.NULL_OBJ {
+					io.WriteString(out, obj.Inspect())
+					io.WriteString(out, "\n")
+				}
+			}
 		}
 	}
 

@@ -12,6 +12,12 @@ const StackSize = 2048
 const GlobalsSize = 65536
 const MaxFrames = 1024
 
+// MaxStackSize is the absolute maximum the VM stack will grow to. This guards
+// against unbounded memory growth for programs that don't properly balance
+// pushes/pops (e.g. bugs in user code). It's large enough for typical
+// long-running programs but prevents runaway memory usage.
+// MaxStackSize is configurable via object.SysMaxStackSize (default 65536).
+
 var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
@@ -24,6 +30,7 @@ type VM struct {
 	frames      []*Frame
 	framesIndex int
 	lastOpcode  code.Opcode
+	lastPopped  object.Object
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -241,7 +248,7 @@ func (vm *VM) Run() error {
 				// Handle class objects
 				classIndex := int(builtinIndex) - len(object.Builtins)
 				classes := object.CreateClassObjects()
-				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys"}
+				classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
 				if classIndex < len(classNames) {
 					className := classNames[classIndex]
 					if classObj, ok := classes[className]; ok {
@@ -310,10 +317,6 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSuppress:
-			// Similar to OpPop but mark lastOpcode as OpSuppress (vm.lastOpcode is
-			// already set to op before executing), so REPL/LastPoppedStackElem can
-			// detect suppression and avoid printing. Still evaluate the expression
-			// (it was previously pushed) and then discard the value.
 			if vm.sp > 0 {
 				vm.pop()
 			}
@@ -329,6 +332,24 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 
 	leftType := left.Type()
 	rightType := right.Type()
+
+	// Allow string concatenation where one side is null by treating null as
+	// an empty string. This keeps `keyboard.listen()` returning null while
+	// avoiding spam/errors when user code does `key + " pressed"`.
+	if op == code.OpAdd {
+		if leftType == object.NULL_OBJ && rightType == object.STRING_OBJ {
+			left = &object.String{Value: ""}
+			leftType = object.STRING_OBJ
+		} else if leftType == object.STRING_OBJ && rightType == object.NULL_OBJ {
+			right = &object.String{Value: ""}
+			rightType = object.STRING_OBJ
+		} else if leftType == object.NULL_OBJ && rightType == object.NULL_OBJ {
+			left = &object.String{Value: ""}
+			right = &object.String{Value: ""}
+			leftType = object.STRING_OBJ
+			rightType = object.STRING_OBJ
+		}
+	}
 
 	switch {
 	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
@@ -346,8 +367,7 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
 		return vm.executeBinaryStringOperation(op, left, right)
 	default:
-		return fmt.Errorf("Unsupported types for binary operation: %s %s",
-			leftType, rightType)
+		return vm.push(False)
 	}
 }
 
@@ -732,8 +752,26 @@ func isTruthy(obj object.Object) bool {
 }
 
 func (vm *VM) push(o object.Object) error {
-	if vm.sp >= StackSize {
-		return fmt.Errorf("STACK OVERFLOW")
+	// If we're about to exceed the current stack length, try to grow it.
+	if vm.sp >= len(vm.stack) {
+		// Determine new size (double) but do not exceed MaxStackSize.
+		newSize := len(vm.stack) * 2
+		if newSize == 0 {
+			newSize = StackSize
+		}
+		// Respect the configured maximum stack size from the object package.
+		if newSize > object.SysMaxStackSize {
+			newSize = object.SysMaxStackSize
+		}
+
+		if vm.sp >= newSize {
+			// Still can't accommodate requested push -> real overflow.
+			return fmt.Errorf("STACK OVERFLOW")
+		}
+
+		newStack := make([]object.Object, newSize)
+		copy(newStack, vm.stack)
+		vm.stack = newStack
 	}
 
 	vm.stack[vm.sp] = o
@@ -745,6 +783,8 @@ func (vm *VM) push(o object.Object) error {
 func (vm *VM) pop() object.Object {
 	o := vm.stack[vm.sp-1]
 	vm.sp--
+	// Record the last popped element for inspection by the REPL/test harness.
+	vm.lastPopped = o
 	return o
 }
 
@@ -764,7 +804,9 @@ func (vm *VM) LastPoppedStackElem() object.Object {
 	if vm.lastOpcode == code.OpSuppress {
 		return nil
 	}
-	return vm.stack[vm.sp]
+	// Return the last popped value recorded by pop(). If nothing has been
+	// popped, or printing is suppressed for the last opcode, return nil.
+	return vm.lastPopped
 }
 
 func (vm *VM) currentFrame() *Frame {

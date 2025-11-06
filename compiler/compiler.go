@@ -12,6 +12,7 @@ type LoopContext struct {
 	loopStartPos  int
 	breakJumps    []int
 	continueJumps []int
+	scopeIndex    int
 }
 
 type Compiler struct {
@@ -54,7 +55,7 @@ func New() *Compiler {
 	// / REPL expects.
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "keyboard"}
 	for _, className := range classNames {
 		if _, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)
@@ -76,6 +77,7 @@ func (c *Compiler) enterLoop(loopStartPos int) {
 		loopStartPos:  loopStartPos,
 		breakJumps:    []int{},
 		continueJumps: []int{},
+		scopeIndex:    c.scopeIndex,
 	})
 }
 
@@ -107,8 +109,13 @@ func (c *Compiler) addBreakJump(pos int) error {
 		return fmt.Errorf("break statement not inside a loop")
 	}
 
-	c.loopContexts[len(c.loopContexts)-1].breakJumps = append(
-		c.loopContexts[len(c.loopContexts)-1].breakJumps, pos)
+	// Ensure the break is in the same compilation scope as the loop.
+	lastIdx := len(c.loopContexts) - 1
+	if c.loopContexts[lastIdx].scopeIndex != c.scopeIndex {
+		return fmt.Errorf("break statement not inside a loop")
+	}
+
+	c.loopContexts[lastIdx].breakJumps = append(c.loopContexts[lastIdx].breakJumps, pos)
 	return nil
 }
 
@@ -117,8 +124,13 @@ func (c *Compiler) addContinueJump(pos int) error {
 		return fmt.Errorf("continue statement not inside a loop")
 	}
 
-	c.loopContexts[len(c.loopContexts)-1].continueJumps = append(
-		c.loopContexts[len(c.loopContexts)-1].continueJumps, pos)
+	// Ensure the continue is in the same compilation scope as the loop.
+	lastIdx := len(c.loopContexts) - 1
+	if c.loopContexts[lastIdx].scopeIndex != c.scopeIndex {
+		return fmt.Errorf("continue statement not inside a loop")
+	}
+
+	c.loopContexts[lastIdx].continueJumps = append(c.loopContexts[lastIdx].continueJumps, pos)
 	return nil
 }
 
@@ -536,7 +548,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		c.emit(code.OpCall, len(node.Arguments))
+		// If there's a block, compile it as a function and add as argument
+		argumentCount := len(node.Arguments)
+		if node.Block != nil {
+			// Create a function literal from the block
+			functionLiteral := &ast.FunctionLiteral{
+				Token:      node.Token,
+				Parameters: []*ast.Identifier{}, // No parameters for callback blocks
+				Body:       node.Block,
+			}
+
+			// Compile the function literal
+			err := c.Compile(functionLiteral)
+			if err != nil {
+				return err
+			}
+			argumentCount++
+		}
+
+		c.emit(code.OpCall, argumentCount)
 
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}

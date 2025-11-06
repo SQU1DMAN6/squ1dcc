@@ -8,7 +8,7 @@ unzip -oqq squ1dcc.fsdl
 go build -o squ1d++ .
 
 sudo cp squ1d++ /usr/local/bin/
-sudo mkdir /usr/share/squ1d++/
+sudo mkdir -p /usr/share/squ1d++/
 sudo cp squ1d++ /usr/share/squ1d++/
 
 sudo rm -rf /tmp/fsdl

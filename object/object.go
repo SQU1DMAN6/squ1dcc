@@ -199,6 +199,9 @@ func (h *Hash) Inspect() string {
 	return out.String()
 }
 
+// System-level configuration (modifiable via builtins in the `sys` class)
+var SysMaxStackSize = 65536
+
 type CompiledFunction struct {
 	Instructions  code.Instructions
 	NumLocals     int

@@ -312,6 +312,7 @@ type CallExpression struct {
 	Token     token.Token
 	Function  Expression
 	Arguments []Expression
+	Block     *BlockStatement // Optional block for callback syntax like keyboard.on("key") { ... }
 }
 
 func (ce *CallExpression) expressionNode()      {}
@@ -326,6 +327,10 @@ func (ce *CallExpression) String() string {
 	out.WriteString("(")
 	out.WriteString(strings.Join(args, ", "))
 	out.WriteString(")")
+	if ce.Block != nil {
+		out.WriteString(" ")
+		out.WriteString(ce.Block.String())
+	}
 	return out.String()
 }
 
