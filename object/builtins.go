@@ -458,7 +458,6 @@ var Builtins = []struct {
 			return nil
 		}, "io"),
 	},
-	// Keyboard Builtins
 	{
 		"on",
 		createBuiltin(func(args ...Object) Object {
@@ -519,48 +518,6 @@ var Builtins = []struct {
 			}
 
 			// Otherwise fall back to single-key raw read
-			fd := int(os.Stdin.Fd())
-			if !term.IsTerminal(fd) {
-				reader := bufio.NewReader(os.Stdin)
-				input, err := reader.ReadString('\n')
-				if err != nil {
-					return newError("Failed to read input: %v", err)
-				}
-				input = strings.TrimSpace(input)
-				if len(input) > 0 {
-					return &String{Value: "Key" + strings.ToUpper(string(input[0]))}
-				}
-				return &String{Value: "KeyEnter"}
-			}
-
-			if err := enableRawMode(); err != nil {
-				return newError("Failed to enable keyboard reading: %v", err)
-			}
-			defer disableRawMode()
-
-			keyBytes, err := readKey()
-			if err != nil {
-				return newError("Failed to read key: %v", err)
-			}
-
-			keyName := normalizeKeyName(keyBytes)
-			return &String{Value: keyName}
-		}, "keyboard"),
-	},
-	{
-		"wait",
-		createBuiltin(func(args ...Object) Object {
-			if len(args) != 0 {
-				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
-			}
-
-			// Wait for an event from the background listener if active
-			if keyboardActive {
-				e := <-keyboardEvents
-				return &String{Value: e.Key}
-			}
-
-			// Otherwise behave like read(): perform a single-key/raw read
 			fd := int(os.Stdin.Fd())
 			if !term.IsTerminal(fd) {
 				reader := bufio.NewReader(os.Stdin)
