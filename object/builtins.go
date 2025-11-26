@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"runtime"
@@ -747,6 +748,27 @@ var Builtins = []struct {
 		}, "sys"),
 	},
 	// Math builtins
+	{
+		"rand",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 2 {
+				return newError("Wrong number of arguments. Expected 2, got %d", len(args))
+			}
+
+			minimum, ok1 := args[0].(*Integer)
+			maximum, ok2 := args[1].(*Integer)
+			if !ok1 || !ok2 {
+				return newError("Arguments to `rand` must be INTEGER and INTEGER, got %s and %s", args[0].Type(), args[1].Type())
+			}
+
+			min := minimum.Value
+			max := maximum.Value
+
+			randomNumber := rand.Int64N(max-min+1) + min
+
+			return &Integer{Value: randomNumber}
+		}, "math"),
+	},
 	{
 		"abs",
 		createBuiltin(func(args ...Object) Object {
