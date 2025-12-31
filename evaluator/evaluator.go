@@ -65,6 +65,20 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		env.Set(node.Name.Value, val)
 		return nil
 
+	case *ast.SuppressStatement:
+		// Evaluate the inner statement or expression but always suppress
+		// any output or error (compiler/VM uses OpSuppress for this).
+		if node.Statement != nil {
+			Eval(node.Statement, env)
+			return NULL
+		}
+
+		if node.Expression != nil {
+			Eval(node.Expression, env)
+			return NULL
+		}
+		return NULL
+
 	// Expressions
 	case *ast.IntegerLiteral:
 		return &object.Integer{Value: node.Value}
@@ -89,6 +103,63 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
+		// Assignment operator: handle specially so we can set identifiers
+		if node.Operator == "=" {
+			// Identifier assignment: var-like re-assignment
+			if ident, ok := node.Left.(*ast.Identifier); ok {
+				val := Eval(node.Right, env)
+				if isError(val) {
+					return val
+				}
+				env.Set(ident.Value, val)
+				return nil
+			}
+
+			// Index assignment: e.g. arr[0] = x or hash["k"] = v
+			if idxExpr, ok := node.Left.(*ast.IndexExpression); ok {
+				leftObj := Eval(idxExpr.Left, env)
+				if isError(leftObj) {
+					return leftObj
+				}
+
+				index := Eval(idxExpr.Index, env)
+				if isError(index) {
+					return index
+				}
+
+				value := Eval(node.Right, env)
+				if isError(value) {
+					return value
+				}
+
+				switch leftObj.Type() {
+				case object.ARRAY_OBJ:
+					arr := leftObj.(*object.Array)
+					if index.Type() != object.INTEGER_OBJ {
+						return newError("Index operator requires integer for arrays, got %s", index.Type())
+					}
+					idx := int(index.(*object.Integer).Value)
+					if idx < 0 || idx >= len(arr.Elements) {
+						return newError("Index out of bounds: %d", idx)
+					}
+					arr.Elements[idx] = value
+					return nil
+				case object.HASH_OBJ:
+					h := leftObj.(*object.Hash)
+					key, ok := index.(object.Hashable)
+					if !ok {
+						return newError("%s is unusable as a hash key", index.Type())
+					}
+					h.Pairs[key.HashKey()] = object.HashPair{Key: index, Value: value}
+					return nil
+				default:
+					return newError("Index operator is not supported: %s", leftObj.Type())
+				}
+			}
+
+			return newError("Invalid assignment target: %T", node.Left)
+		}
+
 		left := Eval(node.Left, env)
 		if isError(left) {
 			return left
@@ -103,6 +174,41 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 	case *ast.IfExpression:
 		return evalIfExpression(node, env)
+
+	case *ast.BlockDirective:
+		// Evaluate inner statement/expression and if it produces an Error,
+		// propagate it so callers (like ExecuteFile) can handle an exit.
+		if node.Statement != nil {
+			// Special-case `block var x = def() { ... }` so we can check the
+			// function body for undefined globals *before* executing it (to
+			// mimic the compiler behavior of aborting on undefined symbols).
+			if ls, ok := node.Statement.(*ast.LetStatement); ok {
+				if fl, ok2 := ls.Value.(*ast.FunctionLiteral); ok2 {
+					// build param set
+					params := make(map[string]bool)
+					for _, p := range fl.Parameters {
+						params[p.Value] = true
+					}
+					if err := findUndefinedInNode(fl.Body, env, params); err != nil {
+						return err
+					}
+				}
+			}
+
+			res := Eval(node.Statement, env)
+			if isError(res) {
+				return res
+			}
+			return NULL
+		}
+
+		if node.Expression != nil {
+			res := Eval(node.Expression, env)
+			if isError(res) {
+				return res
+			}
+			return NULL
+		}
 
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
@@ -305,14 +411,20 @@ func evalStringInfixExpression(
 	operator string,
 	left, right object.Object,
 ) object.Object {
-	if operator != "+" {
+	leftVal := left.(*object.String).Value
+	rightVal := right.(*object.String).Value
+
+	switch operator {
+	case "+":
+		return &object.String{Value: leftVal + rightVal}
+	case "==":
+		return nativeBoolToBooleanObject(leftVal == rightVal)
+	case "!=":
+		return nativeBoolToBooleanObject(leftVal != rightVal)
+	default:
 		return newError("Unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())
 	}
-
-	leftVal := left.(*object.String).Value
-	rightVal := right.(*object.String).Value
-	return &object.String{Value: leftVal + rightVal}
 }
 
 func evalIfExpression(
@@ -349,7 +461,7 @@ func evalIdentifier(
 		return newError("Builtin '%s' is in a class. Maybe use %s.%s instead.", node.Value, builtin.Class, node.Value)
 	}
 
-	return newError("Identifier not found: %s", node.Value)
+	return newError("Undefined variable %s", node.Value)
 }
 
 func isTruthy(obj object.Object) bool {
@@ -394,6 +506,11 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 	switch fn := fn.(type) {
 
 	case *object.Function:
+		// Check argument count to avoid panics and return a helpful error
+		if len(args) != len(fn.Parameters) {
+			return newError("Wrong number of arguments: expected %d, got %d", len(fn.Parameters), len(args))
+		}
+
 		extendedEnv := extendFunctionEnv(fn, args)
 		evaluated := Eval(fn.Body, extendedEnv)
 		return unwrapReturnValue(evaluated)
@@ -568,4 +685,88 @@ func isErrorPipeExpression(node ast.Node) bool {
 		return prefix.Operator == "<<"
 	}
 	return false
+}
+
+// findUndefinedInNode walks an AST subtree looking for identifiers that are
+// not defined in the given environment and not present in the provided
+// params map. It returns the first undefined identifier wrapped as an
+// *object.Error (with Line/Column populated from the identifier token).
+func findUndefinedInNode(node ast.Node, env *object.Environment, params map[string]bool) *object.Error {
+	switch n := node.(type) {
+	case *ast.Identifier:
+		if params != nil {
+			if _, ok := params[n.Value]; ok {
+				return nil
+			}
+		}
+		if _, ok := env.Get(n.Value); ok {
+			return nil
+		}
+		if _, ok := GetBuiltin(n.Value); ok {
+			return nil
+		}
+		return &object.Error{Message: fmt.Sprintf("Undefined variable %s", n.Value), Line: n.Token.Line, Column: n.Token.Column}
+	case *ast.BlockStatement:
+		for _, s := range n.Statements {
+			if err := findUndefinedInNode(s, env, params); err != nil {
+				return err
+			}
+		}
+	case *ast.ExpressionStatement:
+		return findUndefinedInNode(n.Expression, env, params)
+	case *ast.ReturnStatement:
+		return findUndefinedInNode(n.ReturnValue, env, params)
+	case *ast.PrefixExpression:
+		return findUndefinedInNode(n.Right, env, params)
+	case *ast.InfixExpression:
+		if err := findUndefinedInNode(n.Left, env, params); err != nil {
+			return err
+		}
+		return findUndefinedInNode(n.Right, env, params)
+	case *ast.IfExpression:
+		if err := findUndefinedInNode(n.Condition, env, params); err != nil {
+			return err
+		}
+		if err := findUndefinedInNode(n.Consequence, env, params); err != nil {
+			return err
+		}
+		if n.Alternative != nil {
+			return findUndefinedInNode(n.Alternative, env, params)
+		}
+	case *ast.FunctionLiteral:
+		// For nested functions, we don't treat identifiers in the body as
+		// undefined here because they may be resolved when the nested
+		// function is executed; skip deeper checks for nested functions.
+		return nil
+	case *ast.CallExpression:
+		if err := findUndefinedInNode(n.Function, env, params); err != nil {
+			return err
+		}
+		for _, a := range n.Arguments {
+			if err := findUndefinedInNode(a, env, params); err != nil {
+				return err
+			}
+		}
+	case *ast.IndexExpression:
+		if err := findUndefinedInNode(n.Left, env, params); err != nil {
+			return err
+		}
+		return findUndefinedInNode(n.Index, env, params)
+	case *ast.ArrayLiteral:
+		for _, el := range n.Elements {
+			if err := findUndefinedInNode(el, env, params); err != nil {
+				return err
+			}
+		}
+	case *ast.HashLiteral:
+		for k, v := range n.Pairs {
+			if err := findUndefinedInNode(k, env, params); err != nil {
+				return err
+			}
+			if err := findUndefinedInNode(v, env, params); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

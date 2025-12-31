@@ -458,8 +458,7 @@ var Builtins = []struct {
 			}
 
 			output := strings.Join(elements, " ")
-			fmt.Print(output)
-			return nil
+			return &String{Value: output}
 		}, "io"),
 	},
 	{

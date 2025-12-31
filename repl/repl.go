@@ -239,6 +239,19 @@ func ExecuteFile(filename string, out io.Writer) error {
 			evaluated := evaluator.Eval(program, env)
 			if evaluated != nil {
 				if evaluated.Type() == object.ERROR_OBJ {
+					if errObj, ok := evaluated.(*object.Error); ok {
+						if errObj.Filename == "" {
+							errObj.Filename = filename
+						}
+						if errObj.Line == 0 {
+							errObj.Line = 1
+						}
+						if errObj.Column == 0 {
+							errObj.Column = 1
+						}
+						io.WriteString(out, errObj.Inspect())
+						io.WriteString(out, "\n")
+					}
 					return fmt.Errorf("Runtime error in file %s:\t%s\n", filename, evaluated.Inspect())
 				}
 				if evaluated.Type() != object.NULL_OBJ {
@@ -281,6 +294,19 @@ func ExecuteFile(filename string, out io.Writer) error {
 		evaluated := evaluator.Eval(program, env)
 		if evaluated != nil {
 			if evaluated.Type() == object.ERROR_OBJ {
+				if errObj, ok := evaluated.(*object.Error); ok {
+					if errObj.Filename == "" {
+						errObj.Filename = filename
+					}
+					if errObj.Line == 0 {
+						errObj.Line = 1
+					}
+					if errObj.Column == 0 {
+						errObj.Column = 1
+					}
+					io.WriteString(out, errObj.Inspect())
+					io.WriteString(out, "\n")
+				}
 				return fmt.Errorf("Runtime error in file %s: %s", filename, evaluated.Inspect())
 			}
 			if evaluated.Type() != object.NULL_OBJ {
