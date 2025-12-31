@@ -176,6 +176,15 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpClosure:
+			constIndex := code.ReadUint16(ins[ip+1:])
+			numFree := int(code.ReadUint8(ins[ip+3:]))
+			vm.currentFrame().ip += 3
+
+			err := vm.pushClosure(int(constIndex), numFree)
+			if err != nil {
+				return err
+			}
 		case code.OpJump:
 			pos := int(code.ReadUint16(ins[ip+1:]))
 			vm.currentFrame().ip = pos - 1
@@ -199,7 +208,18 @@ func (vm *VM) Run() error {
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
 
-			err := vm.push(vm.globals[globalIndex])
+			val := vm.globals[globalIndex]
+			// If global is not set (nil), treat it as a runtime undefined variable
+			// and push an Error object instead of nil so that functions can
+			// return errors as values instead of crashing the VM.
+			if val == nil {
+				if err := vm.push(&object.Error{Message: "Undefined variable"}); err != nil {
+					return err
+				}
+				break
+			}
+
+			err := vm.push(val)
 			if err != nil {
 				return err
 			}
@@ -273,15 +293,48 @@ func (vm *VM) Run() error {
 				return err
 			}
 
-		case code.OpClosure:
-			constIndex := code.ReadUint16(ins[ip+1:])
-			numFree := code.ReadUint8(ins[ip+3:])
+		case code.OpIsError:
+			// Inspect top-of-stack without popping and push a Boolean indicating whether
+			// the value is an Error object.
+			if vm.sp == 0 {
+				if err := vm.push(False); err != nil {
+					return err
+				}
+				break
+			}
+			top := vm.stack[vm.sp-1]
+			if top == nil {
+				if err := vm.push(False); err != nil {
+					return err
+				}
+				break
+			}
+			if top.Type() == object.ERROR_OBJ {
+				if err := vm.push(True); err != nil {
+					return err
+				}
+			} else {
+				if err := vm.push(False); err != nil {
+					return err
+				}
+			}
 
-			vm.currentFrame().ip += 3
-
-			err := vm.pushClosure(int(constIndex), int(numFree))
-			if err != nil {
-				return err
+		case code.OpErrorExit:
+			// Pop the value on top of the stack; if it's an Error object, return
+			// a Go error so the runner can print it and exit with non-zero status.
+			if vm.sp == 0 {
+				return fmt.Errorf("block directive: no value to check")
+			}
+			val := vm.pop()
+			switch e := val.(type) {
+			case *object.Error:
+				// Use the Error's Inspect() (which includes file/line/column when present)
+				return fmt.Errorf("%s", e.Inspect())
+			default:
+				// If not an Error, push it back and continue
+				if err := vm.push(val); err != nil {
+					return err
+				}
 			}
 
 		case code.OpCurrentClosure:

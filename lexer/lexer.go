@@ -119,7 +119,11 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Line = startLine
 		tok.Column = startCol
 	case '<':
-		if l.peekChar() == '=' {
+		if l.peekChar() == '<' {
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.ERROR_PIPE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+		} else if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{Type: token.LE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}

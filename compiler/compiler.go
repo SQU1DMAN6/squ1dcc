@@ -24,6 +24,11 @@ type Compiler struct {
 	scopes              []CompilationScope
 	scopeIndex          int
 	loopContexts        []LoopContext
+	// undefinedGlobals maps global symbol index -> an Error object containing
+	// source position metadata for undefined identifiers that were auto-defined
+	// during compilation of inner scopes. This is used by the runner to
+	// initialize globals so runtime accesses can report file/line/column info.
+	undefinedGlobals map[int]*object.Error
 }
 
 type EmittedInstruction struct {
@@ -64,11 +69,12 @@ func New() *Compiler {
 	}
 
 	return &Compiler{
-		constants:    []object.Object{},
-		symbolTable:  symbolTable,
-		scopes:       []CompilationScope{mainScope},
-		scopeIndex:   0,
-		loopContexts: []LoopContext{},
+		constants:        []object.Object{},
+		symbolTable:      symbolTable,
+		scopes:           []CompilationScope{mainScope},
+		scopeIndex:       0,
+		loopContexts:     []LoopContext{},
+		undefinedGlobals: map[int]*object.Error{},
 	}
 }
 
@@ -177,6 +183,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpBang)
 		case "-":
 			c.emit(code.OpNGT)
+		case "<<":
+			// Error-pipe as a prefix expression: if the inner value is an Error,
+			// leave it on the stack; otherwise replace it with null.
+			c.emit(code.OpIsError)
+			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+			// True branch: value is Error -> do nothing (value still on stack)
+			jumpPos := c.emit(code.OpJump, 9999)
+
+			afterTruePos := len(c.currentInstructions())
+			c.changeOperand(jumpNotErrPos, afterTruePos)
+
+			// False branch: pop the value and push null
+			c.emit(code.OpPop)
+			c.emit(code.OpNull)
+
+			afterFalsePos := len(c.currentInstructions())
+			c.changeOperand(jumpPos, afterFalsePos)
+
+			return nil
 		default:
 			return fmt.Errorf("line %d, column %d: Unknown operator: %s", node.Token.Line, node.Token.Column, node.Operator)
 		}
@@ -394,6 +420,70 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
+		// Special handling for error pipe (<<) and unblock semantics
+		if node.ErrorPipe {
+			// If the result is an Error, assign the Error object to the variable
+			// else assign null.
+			c.emit(code.OpIsError)
+			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+			// True branch: value is an Error -> assign it directly
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+			}
+
+			// Jump past false branch
+			jumpPos := c.emit(code.OpJump, 9999)
+
+			// False branch: pop the value and assign null
+			afterTruePos := len(c.currentInstructions())
+			c.changeOperand(jumpNotErrPos, afterTruePos)
+			c.emit(code.OpPop)
+			c.emit(code.OpNull)
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+			}
+
+			afterFalsePos := len(c.currentInstructions())
+			c.changeOperand(jumpPos, afterFalsePos)
+			break
+		}
+
+		if node.Unblock {
+			// If the result is an Error, swallow it and assign null; otherwise assign value
+			c.emit(code.OpIsError)
+			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+			// True branch: value is Error -> pop value and assign null
+			c.emit(code.OpPop)
+			c.emit(code.OpNull)
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+			}
+
+			jumpPos := c.emit(code.OpJump, 9999)
+
+			// False branch: assign the value directly
+			afterTruePos := len(c.currentInstructions())
+			c.changeOperand(jumpNotErrPos, afterTruePos)
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+			}
+
+			afterFalsePos := len(c.currentInstructions())
+			c.changeOperand(jumpPos, afterFalsePos)
+			break
+		}
+
+		// Default behavior: assign the evaluated value
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
 		} else {
@@ -401,6 +491,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.SuppressStatement:
+		// Suppress supports wrapping either an expression or a statement.
+		if node.Statement != nil {
+			err := c.Compile(node.Statement)
+			if err != nil {
+				return err
+			}
+			// Emit OpSuppress so VM/REPL won't print any result or error value
+			c.emit(code.OpSuppress)
+			break
+		}
+
 		// Compile the inner expression but emit OpSuppress so the VM will pop
 		// the value and mark the opcode as suppression (so REPL won't print it).
 		err := c.Compile(node.Expression)
@@ -527,6 +628,63 @@ func (c *Compiler) Compile(node ast.Node) error {
 		fnIndex := c.addConstant(compiledFn)
 		c.emit(code.OpClosure, fnIndex, len(freeSymbols))
 
+	case *ast.BlockDirective:
+		// `block` wrapping a LET needs special handling so we can check the
+		// RHS for an Error and abort immediately if so.
+		if ls, ok := node.Statement.(*ast.LetStatement); ok {
+			// Define symbol as usual
+			symbol := c.symbolTable.Define(ls.Name.Value)
+
+			// Compile the RHS expression
+			err := c.Compile(ls.Value)
+			if err != nil {
+				return err
+			}
+
+			// If compilation recorded any undefined globals on the same line as
+			// this statement, treat that as an immediate error and abort.
+			for _, e := range c.undefinedGlobals {
+				if e != nil && e.Line == ls.Token.Line {
+					// Add the error object to constants and emit it, then OpErrorExit
+					errIdx := c.addConstant(&object.Error{Message: e.Message, Line: e.Line, Column: e.Column})
+					c.emit(code.OpConstant, errIdx)
+					c.emit(code.OpErrorExit)
+					// Do not emit assignment; block aborts here
+					return nil
+				}
+			}
+
+			// If result is Error at runtime -> exit (emit OpIsError + jump + OpErrorExit)
+			c.emit(code.OpIsError)
+			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+			// True branch: value is Error -> call OpErrorExit
+			c.emit(code.OpErrorExit)
+
+			// False branch: assign as usual
+			afterTruePos := len(c.currentInstructions())
+			c.changeOperand(jumpNotErrPos, afterTruePos)
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+			}
+
+			break
+		}
+
+		// Otherwise, compile the expression form: evaluate expression and exit on Error
+		err := c.Compile(node.Expression)
+		if err != nil {
+			return err
+		}
+
+		c.emit(code.OpIsError)
+		jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
+		c.emit(code.OpErrorExit)
+		afterTruePos := len(c.currentInstructions())
+		c.changeOperand(jumpNotErrPos, afterTruePos)
+
 	case *ast.ReturnStatement:
 		err := c.Compile(node.ReturnValue)
 		if err != nil {
@@ -651,7 +809,31 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
 		if !ok {
-			return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
+			// If we're in an inner scope (inside a function), allow unknown
+			// identifiers to be treated as globals so functions can reference
+			// variables that might be defined later (deferred resolution).
+			if c.scopeIndex > 0 {
+				top := c.symbolTable
+				for top.Outer != nil {
+					top = top.Outer
+				}
+				symbol = top.Define(node.Value)
+				ok = true
+
+				// Record an Error object with positional info for this undefined
+				// global so the REPL/runner can initialize it and provide a
+				// helpful file/line/column error message at runtime.
+				if c.undefinedGlobals == nil {
+					c.undefinedGlobals = map[int]*object.Error{}
+				}
+				c.undefinedGlobals[symbol.Index] = &object.Error{
+					Message: fmt.Sprintf("Undefined variable %s", node.Value),
+					Line:    node.Token.Line,
+					Column:  node.Token.Column,
+				}
+			} else {
+				return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
+			}
 		}
 
 		// If this symbol is a builtin that belongs to a class, require dot
@@ -742,6 +924,7 @@ func (c *Compiler) replaceInstruction(pos int, newInstruction []byte) {
 
 func (c *Compiler) changeOperand(opPos int, operand int) {
 	op := code.Opcode(c.currentInstructions()[opPos])
+
 	newInstruction := code.Make(op, operand)
 
 	c.replaceInstruction(opPos, newInstruction)
@@ -787,6 +970,14 @@ func (c *Compiler) Bytecode() *Bytecode {
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
 	}
+}
+
+// UndefinedGlobals returns the map of global index -> *object.Error for
+// identifiers that were auto-defined (deferred) during compilation. The
+// runner (REPL or file executor) can use this to initialize globals so
+// runtime accesses include helpful file/line/column diagnostics.
+func (c *Compiler) UndefinedGlobals() map[int]*object.Error {
+	return c.undefinedGlobals
 }
 
 type Bytecode struct {

@@ -48,6 +48,8 @@ const (
 	OpSuppress
 	OpBreak
 	OpContinue
+	OpIsError
+	OpErrorExit
 )
 
 type Definition struct {
@@ -93,6 +95,8 @@ var definitions = map[Opcode]*Definition{
 	OpSuppress:       {"OpSuppress", []int{}},
 	OpBreak:          {"OpBreak", []int{}},
 	OpContinue:       {"OpContinue", []int{}},
+	OpIsError:        {"OpIsError", []int{}},
+	OpErrorExit:      {"OpErrorExit", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

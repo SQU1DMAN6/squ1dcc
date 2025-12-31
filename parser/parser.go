@@ -95,6 +95,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
+	// Support error-pipe as a prefix operator so `<< expr` can appear in any expression position
+	p.registerPrefix(token.ERROR_PIPE, p.parsePrefixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)
@@ -336,6 +338,19 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	return stmt
 }
 
+func (p *Parser) parseUnblockLetStatement() *ast.LetStatement {
+	// current token is 'unblock'
+	if !p.expectPeek(token.LET) {
+		return nil
+	}
+
+	stmt := p.parseLetStatement()
+	if stmt != nil {
+		stmt.Unblock = true
+	}
+	return stmt
+}
+
 //CALL EXPRESSION -<
 
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
@@ -425,6 +440,12 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 	}
 
 	p.nextToken()
+
+	// support error pipe (<<) right after '='
+	if p.curToken.Type == token.ERROR_PIPE {
+		stmt.ErrorPipe = true
+		p.nextToken()
+	}
 
 	stmt.Value = p.parseExpression(LOWEST)
 
@@ -614,6 +635,8 @@ func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case token.LET:
 		return p.parseLetStatement()
+	case token.UNBLOCK:
+		return p.parseUnblockLetStatement()
 	case token.RETURN:
 		return p.parseReturnStatement()
 	case token.WHILE:
@@ -626,6 +649,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseContinueStatement()
 	case token.SUPPRESS:
 		return p.parseSuppressStatement()
+	case token.BLOCK:
+		return p.parseBlockDirective()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -636,6 +661,13 @@ func (p *Parser) parseSuppressStatement() ast.Statement {
 
 	p.nextToken()
 
+	// If the next token is a LET (or UNBLOCK LET), parse it as a statement
+	if p.curToken.Type == token.LET {
+		stmt.Statement = p.parseLetStatement()
+		return stmt
+	}
+
+	// Otherwise parse as expression (existing behavior)
 	stmt.Expression = p.parseExpression(LOWEST)
 
 	if p.peekTokenIs(token.SEMICOLON) {
@@ -647,6 +679,25 @@ func (p *Parser) parseSuppressStatement() ast.Statement {
 
 func (p *Parser) parseBreakStatement() ast.Statement {
 	stmt := &ast.BreakStatement{Token: p.curToken}
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseBlockDirective() ast.Statement {
+	stmt := &ast.BlockDirective{Token: p.curToken}
+
+	p.nextToken()
+
+	if p.curToken.Type == token.LET {
+		stmt.Statement = p.parseLetStatement()
+		return stmt
+	}
+
+	stmt.Expression = p.parseExpression(LOWEST)
 
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()

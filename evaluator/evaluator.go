@@ -35,8 +35,24 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.LetStatement:
 		val := Eval(node.Value, env)
 		if isError(val) {
-			return val
+			// If error-pipe is used, assign the Error object to the variable.
+			if node.ErrorPipe {
+				env.Set(node.Name.Value, val)
+				return nil
+			}
+
+			// Default behavior: swallow the error and assign null to the variable.
+			env.Set(node.Name.Value, NULL)
+			return nil
 		}
+
+		// No error occurred
+		if node.ErrorPipe {
+			// Error-pipe returns null when the inner expression succeeded
+			env.Set(node.Name.Value, NULL)
+			return nil
+		}
+
 		env.Set(node.Name.Value, val)
 		return nil
 
@@ -55,7 +71,10 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 	case *ast.PrefixExpression:
 		right := Eval(node.Right, env)
-		if isError(right) {
+		// Allow the error-pipe prefix (<<) to observe Error values — don't
+		// short-circuit here for that operator. For all other prefixes, keep
+		// the previous behavior of returning early on Error.
+		if isError(right) && node.Operator != "<<" {
 			return right
 		}
 		return evalPrefixExpression(node.Operator, right)
@@ -176,6 +195,14 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 		return evalBangOperatorExpression(right)
 	case "-":
 		return evalMinusPrefixOperatorExpression(right)
+	case "<<":
+		// Error-pipe as prefix expression: if the evaluated right side is an
+		// Error, return that Error object; otherwise return NULL to indicate
+		// no error value.
+		if isError(right) {
+			return right
+		}
+		return NULL
 	default:
 		return newError("Unknown operator: %s%s", operator, right.Type())
 	}

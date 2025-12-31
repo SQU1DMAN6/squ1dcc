@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"squ1d++/pkg"
 	"strconv"
 	"strings"
@@ -265,6 +266,8 @@ var Builtins = []struct {
 				return &String{Value: "Builtin"}
 			case *Function:
 				return &String{Value: "Function"}
+			case *Error:
+				return &String{Value: "Error"}
 			default:
 				return &String{Value: "Null"}
 			}
@@ -1352,7 +1355,6 @@ func ListDefinedClasses() string {
 	for className := range classes {
 		classNames = append(classNames, className)
 	}
-	// optional: sort them alphabetically
-	// sort.Strings(classNames)
+	sort.Strings(classNames)
 	return strings.Join(classNames, ", ")
 }

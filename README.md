@@ -199,6 +199,39 @@ while (true) {
 
 Note that a `while (true)` loop should have a break or exit statement to prevent a stack overflow.
 
+## Error Handling
+
+### Unblock
+
+The `unblock` keyword allows the code to continue executing even if a function returns an error.
+
+```squ1d
+unblock var x = def() { return y }
+
+io.echo("Hi")
+```
+
+### Error Pipe
+
+The error pipe keyword (`<<`) is used to retrieve the error returned by a function instead of its value.
+
+```squ1d
+unblock var func = def() { return y }
+unblock var y = << func()
+io.echo(y)
+```
+
+If the function executes successfully, the error pipe returns `null`.
+
+```squ1d
+var func = def() { return 20 }
+var y = << func()
+var z = func()
+
+io.write(y) # null
+io.write(z) # 20
+```
+
 ## Data Structures
 
 ### Arrays

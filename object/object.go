@@ -100,11 +100,19 @@ func (rv *ReturnValue) Type() ObjectType { return RETURN_VALUE_OBJ }
 func (rv *ReturnValue) Inspect() string  { return rv.Value.Inspect() }
 
 type Error struct {
-	Message string
+	Message  string
+	Filename string
+	Line     int
+	Column   int
 }
 
 func (e *Error) Type() ObjectType { return ERROR_OBJ }
-func (e *Error) Inspect() string  { return "ERROR: " + e.Message }
+func (e *Error) Inspect() string {
+	if e.Filename != "" {
+		return fmt.Sprintf("ERROR: %s, line %d, column %d: %s", e.Filename, e.Line, e.Column, e.Message)
+	}
+	return "ERROR: " + e.Message
+}
 
 type Function struct {
 	Parameters []*ast.Identifier

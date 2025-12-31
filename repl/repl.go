@@ -221,6 +221,15 @@ func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[
 	if err := comp.Compile(program); err != nil {
 		return fmt.Errorf("compile error in include %s: %v", chosen, err)
 	}
+
+	for idx, e := range comp.UndefinedGlobals() {
+		if globals[idx] == nil {
+			copyErr := *e
+			copyErr.Filename = chosen
+			globals[idx] = &copyErr
+		}
+	}
+
 	bytecode := comp.Bytecode()
 	*constants = bytecode.Constants
 	m := vm.NewWithGlobalsStore(bytecode, globals)
@@ -309,6 +318,17 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return fmt.Errorf("In file %s:\t%v\n", filename, err)
 			}
 
+			// Initialize any undefined globals the compiler recorded so that
+			// runtime accesses can include file/line/column metadata in Error
+			// objects.
+			for idx, e := range comp.UndefinedGlobals() {
+				if globals[idx] == nil {
+					copyErr := *e
+					copyErr.Filename = filename
+					globals[idx] = &copyErr
+				}
+			}
+
 			code := comp.Bytecode()
 			constants = code.Constants
 
@@ -377,6 +397,14 @@ func ExecuteFile(filename string, out io.Writer) error {
 		if err != nil {
 			fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
 			return fmt.Errorf("In file %s: %v", filename, err)
+		}
+
+		for idx, e := range comp.UndefinedGlobals() {
+			if globals[idx] == nil {
+				copyErr := *e
+				copyErr.Filename = filename
+				globals[idx] = &copyErr
+			}
 		}
 
 		code := comp.Bytecode()

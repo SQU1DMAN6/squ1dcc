@@ -27,9 +27,11 @@ type Program struct {
 }
 
 type LetStatement struct {
-	Token token.Token
-	Name  *Identifier
-	Value Expression
+	Token     token.Token
+	Name      *Identifier
+	Value     Expression
+	Unblock   bool
+	ErrorPipe bool
 }
 
 func (ls *LetStatement) statementNode()       {}
@@ -434,9 +436,15 @@ func (p *Program) String() string {
 
 func (ls *LetStatement) String() string {
 	var out bytes.Buffer
+	if ls.Unblock {
+		out.WriteString("unblock ")
+	}
 	out.WriteString(ls.TokenLiteral() + " ")
 	out.WriteString(ls.Name.String())
 	out.WriteString(" = ")
+	if ls.ErrorPipe {
+		out.WriteString("<< ")
+	}
 	if ls.Value != nil {
 		out.WriteString(ls.Value.String())
 	}
@@ -465,18 +473,60 @@ func (es *ExpressionStatement) String() string {
 	return ""
 }
 
+// BlockDirective represents the `block` directive which aborts execution
+// with a non-zero exit when the inner expression/statement evaluates to an Error.
+type BlockDirective struct {
+	Token      token.Token
+	Expression Expression
+	Statement  Statement
+}
+
+func (bd *BlockDirective) statementNode()       {}
+func (bd *BlockDirective) TokenLiteral() string { return bd.Token.Literal }
+func (bd *BlockDirective) String() string {
+	if bd.Statement != nil {
+		switch s := bd.Statement.(type) {
+		case *LetStatement:
+			return "block " + s.String()
+		default:
+			return "block <stmt>"
+		}
+	}
+	if bd.Expression != nil {
+		return "block " + bd.Expression.String()
+	}
+	return "block"
+}
+
 // SuppressStatement represents a statement prefixed with the `suppress` keyword.
 // It evaluates the inner expression but indicates the VM/REPL should not print the result.
 type SuppressStatement struct {
 	Token      token.Token
 	Expression Expression
+	Statement  Statement
 }
 
 func (ss *SuppressStatement) statementNode()       {}
 func (ss *SuppressStatement) TokenLiteral() string { return ss.Token.Literal }
 func (ss *SuppressStatement) String() string {
+	if ss.Statement != nil {
+		return "suppress " + ss.StatementTokenString()
+	}
 	if ss.Expression != nil {
 		return "suppress " + ss.Expression.String()
 	}
 	return "suppress"
+}
+
+func (ss *SuppressStatement) StatementTokenString() string {
+	// Utility to stringify a statement for String() output
+	if ss.Statement == nil {
+		return ""
+	}
+	switch s := ss.Statement.(type) {
+	case *LetStatement:
+		return s.String()
+	default:
+		return "<stmt>"
+	}
 }
