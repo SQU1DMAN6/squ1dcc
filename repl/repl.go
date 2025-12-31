@@ -6,11 +6,10 @@ import (
 	"io"
 	"os"
 	"os/user"
-	"squ1d++/compiler"
+	"squ1d++/evaluator"
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
-	"squ1d++/vm"
 	"strings"
 )
 
@@ -71,29 +70,16 @@ func needsContinuation(line string) bool {
 }
 
 func Start(in io.Reader, out io.Writer) {
-	// env := object.NewEnvironment()
+	env := object.NewEnvironment()
 	_, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 	scanner := bufio.NewScanner(in)
-	constants := []object.Object{}
-	globals := make([]object.Object, vm.GlobalsSize)
-	symbolTable := compiler.NewSymbolTable()
-	for i, v := range object.Builtins {
-		symbolTable.DefineBuiltin(i, v.Name)
-	}
 
 	classes := object.CreateClassObjects()
-	builtinCount := len(object.Builtins)
-	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
-	for _, className := range classNames {
-		if classObj, ok := classes[className]; ok {
-			symbolTable.DefineBuiltin(builtinCount, className)
-			globals[builtinCount] = classObj
-			builtinCount++
-		}
+	for name, obj := range classes {
+		env.Set(name, obj)
 	}
 
 	for {
@@ -107,7 +93,7 @@ func Start(in io.Reader, out io.Writer) {
 
 		// Simple include handling: include("path") or include("name")
 		if incPath, ok := tryParseInclude(input); ok {
-			if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+			if err := executeInclude(incPath, env, out); err != nil {
 				fmt.Fprintf(out, "Include error: %v\n", err)
 			}
 			continue
@@ -122,43 +108,11 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
-		comp := compiler.NewWithState(symbolTable, constants)
-		err := comp.Compile(program)
-		if err != nil {
-			fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
-			continue
-		}
-
-		code := comp.Bytecode()
-		constants = code.Constants
-
-		machine := vm.NewWithGlobalsStore(code, globals)
-
-		err = machine.Run()
-		if err != nil {
-			fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
-			continue
-		}
-
-		// Prefer the current top-of-stack if present and not null (covers
-		// constructs that push a deliberate result, e.g., while loops that
-		// push null). Otherwise fall back to the last popped element which
-		// is the value of an expression statement.
-		lastPopped := machine.LastPoppedStackElem()
-		top := machine.StackTop()
-		var toPrint interface{}
-		if top != nil {
-			toPrint = top
-		} else {
-			toPrint = lastPopped
-		}
-
-		if toPrint != nil {
-			if obj, ok := toPrint.(object.Object); ok {
-				if obj.Type() != object.NULL_OBJ {
-					io.WriteString(out, obj.Inspect())
-					io.WriteString(out, "\n")
-				}
+		evaluated := evaluator.Eval(program, env)
+		if evaluated != nil {
+			if evaluated.Type() != object.NULL_OBJ {
+				io.WriteString(out, evaluated.Inspect())
+				io.WriteString(out, "\n")
 			}
 		}
 	}
@@ -183,7 +137,7 @@ func tryParseInclude(input string) (string, bool) {
 	return inside, true
 }
 
-func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, out io.Writer) error {
+func executeInclude(path string, env *object.Environment, out io.Writer) error {
 	candidates := []string{path}
 	if !strings.HasSuffix(path, ".sqd") {
 		candidates = append(candidates, "lib/"+path+".sqd")
@@ -217,24 +171,9 @@ func executeInclude(path string, symbolTable *compiler.SymbolTable, constants *[
 		return fmt.Errorf("parse errors in include %s", chosen)
 	}
 
-	comp := compiler.NewWithState(symbolTable, *constants)
-	if err := comp.Compile(program); err != nil {
-		return fmt.Errorf("compile error in include %s: %v", chosen, err)
-	}
-
-	for idx, e := range comp.UndefinedGlobals() {
-		if globals[idx] == nil {
-			copyErr := *e
-			copyErr.Filename = chosen
-			globals[idx] = &copyErr
-		}
-	}
-
-	bytecode := comp.Bytecode()
-	*constants = bytecode.Constants
-	m := vm.NewWithGlobalsStore(bytecode, globals)
-	if err := m.Run(); err != nil {
-		return fmt.Errorf("runtime error in include %s: %v", chosen, err)
+	evaluated := evaluator.Eval(program, env)
+	if evaluated != nil && evaluated.Type() == object.ERROR_OBJ {
+		return fmt.Errorf("runtime error in include %s: %s", chosen, evaluated.Inspect())
 	}
 	return nil
 }
@@ -252,25 +191,11 @@ func ExecuteFile(filename string, out io.Writer) error {
 		return fmt.Errorf("Could not read file %s: %v", filename, err)
 	}
 
-	// Create a new VM state for file execution
-	constants := []object.Object{}
-	globals := make([]object.Object, vm.GlobalsSize)
-	symbolTable := compiler.NewSymbolTable()
-	for i, v := range object.Builtins {
-		symbolTable.DefineBuiltin(i, v.Name)
-	}
-
-	// Add class objects to globals
+	// Create a new environment for file execution
+	env := object.NewEnvironment()
 	classes := object.CreateClassObjects()
-	builtinCount := len(object.Builtins)
-	// Use the same order as the VM expects
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
-	for _, className := range classNames {
-		if classObj, ok := classes[className]; ok {
-			symbolTable.DefineBuiltin(builtinCount, className)
-			globals[builtinCount] = classObj
-			builtinCount++
-		}
+	for name, obj := range classes {
+		env.Set(name, obj)
 	}
 
 	// Process the file content line by line to capture all outputs
@@ -295,7 +220,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 
 			// Handle include inline
 			if incPath, ok := tryParseInclude(input); ok {
-				if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+				if err := executeInclude(incPath, env, out); err != nil {
 					fmt.Fprintf(out, "Include error: %v\n", err)
 					return err
 				}
@@ -311,53 +236,14 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
 			}
 
-			comp := compiler.NewWithState(symbolTable, constants)
-			err := comp.Compile(program)
-			if err != nil {
-				fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
-				return fmt.Errorf("In file %s:\t%v\n", filename, err)
-			}
-
-			// Initialize any undefined globals the compiler recorded so that
-			// runtime accesses can include file/line/column metadata in Error
-			// objects.
-			for idx, e := range comp.UndefinedGlobals() {
-				if globals[idx] == nil {
-					copyErr := *e
-					copyErr.Filename = filename
-					globals[idx] = &copyErr
+			evaluated := evaluator.Eval(program, env)
+			if evaluated != nil {
+				if evaluated.Type() == object.ERROR_OBJ {
+					return fmt.Errorf("Runtime error in file %s:\t%s\n", filename, evaluated.Inspect())
 				}
-			}
-
-			code := comp.Bytecode()
-			constants = code.Constants
-
-			machine := vm.NewWithGlobalsStore(code, globals)
-
-			err = machine.Run()
-			if err != nil {
-				fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
-				return fmt.Errorf("Runtime error in file %s:\t%v\n", filename, err)
-			}
-
-			// Print the result of this statement. Prefer top-of-stack when
-			// available (e.g., loops push null), otherwise use the last
-			// popped value produced by expression statements.
-			lastPopped := machine.LastPoppedStackElem()
-			top := machine.StackTop()
-			var toPrint interface{}
-			if top != nil {
-				toPrint = top
-			} else {
-				toPrint = lastPopped
-			}
-
-			if toPrint != nil {
-				if obj, ok := toPrint.(object.Object); ok {
-					if obj.Type() != object.NULL_OBJ {
-						io.WriteString(out, obj.Inspect())
-						io.WriteString(out, "\n")
-					}
+				if evaluated.Type() != object.NULL_OBJ {
+					io.WriteString(out, evaluated.Inspect())
+					io.WriteString(out, "\n")
 				}
 			}
 		} else {
@@ -376,7 +262,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 
 		// Handle include inline
 		if incPath, ok := tryParseInclude(input); ok {
-			if err := executeInclude(incPath, symbolTable, &constants, globals, out); err != nil {
+			if err := executeInclude(incPath, env, out); err != nil {
 				fmt.Fprintf(out, "Include error: %v\n", err)
 				return err
 			}
@@ -392,48 +278,14 @@ func ExecuteFile(filename string, out io.Writer) error {
 			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
 		}
 
-		comp := compiler.NewWithState(symbolTable, constants)
-		err := comp.Compile(program)
-		if err != nil {
-			fmt.Fprintf(out, "COMPILATION ERROR:\n    %s\n", err)
-			return fmt.Errorf("In file %s: %v", filename, err)
-		}
-
-		for idx, e := range comp.UndefinedGlobals() {
-			if globals[idx] == nil {
-				copyErr := *e
-				copyErr.Filename = filename
-				globals[idx] = &copyErr
+		evaluated := evaluator.Eval(program, env)
+		if evaluated != nil {
+			if evaluated.Type() == object.ERROR_OBJ {
+				return fmt.Errorf("Runtime error in file %s: %s", filename, evaluated.Inspect())
 			}
-		}
-
-		code := comp.Bytecode()
-		constants = code.Constants
-
-		machine := vm.NewWithGlobalsStore(code, globals)
-
-		err = machine.Run()
-		if err != nil {
-			fmt.Fprintf(out, "INSTRUCTIONS UNCLEAR:\n    %s\n", err)
-			return fmt.Errorf("Runtime error in file %s: %v", filename, err)
-		}
-
-		// Print the result of this statement (final leftover input chunk).
-		lastPopped := machine.LastPoppedStackElem()
-		top := machine.StackTop()
-		var toPrint interface{}
-		if top != nil {
-			toPrint = top
-		} else {
-			toPrint = lastPopped
-		}
-
-		if toPrint != nil {
-			if obj, ok := toPrint.(object.Object); ok {
-				if obj.Type() != object.NULL_OBJ {
-					io.WriteString(out, obj.Inspect())
-					io.WriteString(out, "\n")
-				}
+			if evaluated.Type() != object.NULL_OBJ {
+				io.WriteString(out, evaluated.Inspect())
+				io.WriteString(out, "\n")
 			}
 		}
 	}

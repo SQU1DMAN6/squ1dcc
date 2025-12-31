@@ -35,15 +35,24 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.LetStatement:
 		val := Eval(node.Value, env)
 		if isError(val) {
+			// If the error came from an error-pipe expression (<<), assign it.
+			if prefix, ok := node.Value.(*ast.PrefixExpression); ok && prefix.Operator == "<<" {
+				env.Set(node.Name.Value, val)
+				return nil
+			}
+
 			// If error-pipe is used, assign the Error object to the variable.
 			if node.ErrorPipe {
 				env.Set(node.Name.Value, val)
 				return nil
 			}
 
-			// Default behavior: swallow the error and assign null to the variable.
+			// Default behavior: assign null to the variable.
 			env.Set(node.Name.Value, NULL)
-			return nil
+			if node.Unblock {
+				return nil
+			}
+			return val
 		}
 
 		// No error occurred
@@ -110,17 +119,11 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 
 		args := evalExpressions(node.Arguments, env)
-		if len(args) == 1 && isError(args[0]) {
-			return args[0]
-		}
 
 		return applyFunction(function, args)
 
 	case *ast.ArrayLiteral:
 		elements := evalExpressions(node.Elements, env)
-		if len(elements) == 1 && isError(elements[0]) {
-			return elements[0]
-		}
 		return &object.Array{Elements: elements}
 
 	case *ast.IndexExpression:
@@ -381,9 +384,6 @@ func evalExpressions(
 
 	for _, e := range exps {
 		evaluated := Eval(e, env)
-		if isError(evaluated) {
-			return []object.Object{evaluated}
-		}
 		result = append(result, evaluated)
 	}
 
@@ -561,4 +561,11 @@ func evalDotExpression(node *ast.DotExpression, env *object.Environment) object.
 	}
 
 	return newError("Dot operator not supported for type %s", left.Type())
+}
+
+func isErrorPipeExpression(node ast.Node) bool {
+	if prefix, ok := node.(*ast.PrefixExpression); ok {
+		return prefix.Operator == "<<"
+	}
+	return false
 }
