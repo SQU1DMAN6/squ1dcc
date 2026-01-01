@@ -196,6 +196,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
 
 			// True branch: value is Error -> do nothing (value still on stack)
+			// Also emit a bogus value
 			jumpPos := c.emit(code.OpJump, 9999)
 
 			afterTruePos := len(c.currentInstructions())
@@ -241,7 +242,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 
 			c.emit(code.OpGreaterThan)
-			// Invert the result for <= (a <= b is !(a > b))
 			c.emit(code.OpBang)
 			return nil
 		}
@@ -258,7 +258,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 
 			c.emit(code.OpGreaterThan)
-			// Invert the result for >= (a >= b is !(b > a))
 			c.emit(code.OpBang)
 			return nil
 		}
@@ -647,15 +646,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 			// Define symbol as usual
 			symbol := c.symbolTable.Define(ls.Name.Value)
 
-			// Compile the RHS expression
+			// Compile the RHS expression. Snapshot any existing undefined globals
+			// so we only consider undefined identifiers that were recorded by
+			// compiling this RHS (and not from prior statements compiled earlier).
+			preExisting := map[int]bool{}
+			for idx := range c.undefinedGlobals {
+				preExisting[idx] = true
+			}
+
 			err := c.Compile(ls.Value)
 			if err != nil {
 				return err
 			}
 
-			// If compilation recorded any undefined globals on the same line as
-			// this statement, treat that as an immediate error and abort.
-			for _, e := range c.undefinedGlobals {
+			// If compilation recorded any newly-discovered undefined globals on
+			// the same line as this statement, treat that as an immediate error
+			// and abort. We only consider entries that were not present before
+			// compiling the RHS to avoid false positives from earlier statements.
+			for idx, e := range c.undefinedGlobals {
+				if preExisting[idx] {
+					continue
+				}
 				if e != nil && e.Line == ls.Token.Line {
 					// Add the error object to constants and emit it, then OpErrorExit
 					errIdx := c.addConstant(&object.Error{Message: e.Message, Line: e.Line, Column: e.Column})
