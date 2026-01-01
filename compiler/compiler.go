@@ -29,6 +29,11 @@ type Compiler struct {
 	// during compilation of inner scopes. This is used by the runner to
 	// initialize globals so runtime accesses can report file/line/column info.
 	undefinedGlobals map[int]*object.Error
+	// allowDeferredUndefinedGlobals, when true, treats unknown identifiers
+	// at top-level as deferred globals (auto-defined) rather than returning
+	// a compile-time error. This is used for `suppress` so suppressed
+	// statements don't abort compilation on undefined names.
+	allowDeferredUndefinedGlobals bool
 }
 
 type EmittedInstruction struct {
@@ -69,12 +74,13 @@ func New() *Compiler {
 	}
 
 	return &Compiler{
-		constants:        []object.Object{},
-		symbolTable:      symbolTable,
-		scopes:           []CompilationScope{mainScope},
-		scopeIndex:       0,
-		loopContexts:     []LoopContext{},
-		undefinedGlobals: map[int]*object.Error{},
+		constants:                     []object.Object{},
+		symbolTable:                   symbolTable,
+		scopes:                        []CompilationScope{mainScope},
+		scopeIndex:                    0,
+		loopContexts:                  []LoopContext{},
+		undefinedGlobals:              map[int]*object.Error{},
+		allowDeferredUndefinedGlobals: false,
 	}
 }
 
@@ -493,7 +499,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.SuppressStatement:
 		// Suppress supports wrapping either an expression or a statement.
 		if node.Statement != nil {
+			prev := c.allowDeferredUndefinedGlobals
+			c.allowDeferredUndefinedGlobals = true
 			err := c.Compile(node.Statement)
+			c.allowDeferredUndefinedGlobals = prev
 			if err != nil {
 				return err
 			}
@@ -504,7 +513,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		// Compile the inner expression but emit OpSuppress so the VM will pop
 		// the value and mark the opcode as suppression (so REPL won't print it).
+		prev := c.allowDeferredUndefinedGlobals
+		c.allowDeferredUndefinedGlobals = true
 		err := c.Compile(node.Expression)
+		c.allowDeferredUndefinedGlobals = prev
 		if err != nil {
 			return err
 		}
@@ -809,10 +821,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)
 		if !ok {
-			// If we're in an inner scope (inside a function), allow unknown
-			// identifiers to be treated as globals so functions can reference
-			// variables that might be defined later (deferred resolution).
-			if c.scopeIndex > 0 {
+			// If we're in an inner scope (inside a function), or if the
+			// compiler has been asked to allow deferred undefined globals
+			// (used by `suppress`), treat unknown identifiers as globals so
+			// functions and suppressed statements can reference variables
+			// defined later. Record positional info for runtime diagnostics.
+			if c.scopeIndex > 0 || c.allowDeferredUndefinedGlobals {
 				top := c.symbolTable
 				for top.Outer != nil {
 					top = top.Outer
@@ -820,9 +834,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 				symbol = top.Define(node.Value)
 				ok = true
 
-				// Record an Error object with positional info for this undefined
-				// global so the REPL/runner can initialize it and provide a
-				// helpful file/line/column error message at runtime.
 				if c.undefinedGlobals == nil {
 					c.undefinedGlobals = map[int]*object.Error{}
 				}

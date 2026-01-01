@@ -31,6 +31,11 @@ type VM struct {
 	framesIndex int
 	lastOpcode  code.Opcode
 	lastPopped  object.Object
+	// lastPopWasAssignment is true when the last popped value was popped
+	// as part of an assignment (OpSetGlobal/OpSetLocal). This allows
+	// LastPoppedStackElem to suppress printing assignment results even
+	// if subsequent opcodes changed lastOpcode (e.g., OpJump).
+	lastPopWasAssignment bool
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -203,6 +208,7 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 2
 
 			vm.globals[globalIndex] = vm.pop()
+			vm.lastPopWasAssignment = true
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
@@ -231,6 +237,7 @@ func (vm *VM) Run() error {
 			frame := vm.currentFrame()
 
 			vm.stack[frame.basePointer+int(localIndex)] = vm.pop()
+			vm.lastPopWasAssignment = true
 
 		case code.OpGetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
@@ -838,6 +845,9 @@ func (vm *VM) pop() object.Object {
 	vm.sp--
 	// Record the last popped element for inspection by the REPL/test harness.
 	vm.lastPopped = o
+	// Any explicit pop indicates the last popped value is not an assignment
+	// unless the caller sets `lastPopWasAssignment` afterward (e.g., OpSetGlobal).
+	vm.lastPopWasAssignment = false
 	return o
 }
 
@@ -855,6 +865,13 @@ func (vm *VM) LastPoppedStackElem() object.Object {
 	}
 	// Also suppress printing when the last opcode was OpSuppress
 	if vm.lastOpcode == code.OpSuppress {
+		return nil
+	}
+	// Also suppress if the last popped value was from an assignment; this
+	// handles cases where a following OpJump or other opcode changed
+	// `lastOpcode` after the assignment but we still want to treat the
+	// assignment as a "pure" statement.
+	if vm.lastPopWasAssignment {
 		return nil
 	}
 	// Return the last popped value recorded by pop(). If nothing has been

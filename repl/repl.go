@@ -6,10 +6,13 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"squ1d++/ast"
+	"squ1d++/compiler"
 	"squ1d++/evaluator"
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
+	"squ1d++/vm"
 	"strings"
 )
 
@@ -191,77 +194,108 @@ func ExecuteFile(filename string, out io.Writer) error {
 		return fmt.Errorf("Could not read file %s: %v", filename, err)
 	}
 
-	// Create a new environment for file execution
-	env := object.NewEnvironment()
-	classes := object.CreateClassObjects()
-	for name, obj := range classes {
-		env.Set(name, obj)
+	// We'll compile & run the file one complete statement at a time,
+	// preserving compiler state and globals between statements (like main.go).
+
+	// Build an initial symbol table and register builtins and class names
+	symbolTable := compiler.NewSymbolTable()
+	for i, v := range object.Builtins {
+		symbolTable.DefineBuiltin(i, v.Name)
 	}
 
-	// Process the file content line by line to capture all outputs
+	// Register class objects in the symbol table and pre-seed globals
+	globals := make([]object.Object, vm.GlobalsSize)
+	classes := object.CreateClassObjects()
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "keyboard"}
+	for _, className := range classNames {
+		if classObj, ok := classes[className]; ok {
+			sym := symbolTable.Define(className)
+			globals[sym.Index] = classObj
+		}
+	}
+
+	constants := []object.Object{}
+	comp := compiler.NewWithState(symbolTable, constants)
+
+	// Read the file and execute complete statements
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
-	var currentInput strings.Builder
+	var currentStatement strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// Skip empty lines (whitespace is ignored)
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
 
-		currentInput.WriteString(line)
+		currentStatement.WriteString(line)
 
-		// Check if we have a complete statement
-		if !needsContinuation(currentInput.String()) {
-			// We have a complete statement, execute it
-			input := currentInput.String()
-			currentInput.Reset()
+		if !needsContinuation(currentStatement.String()) {
+			stmt := currentStatement.String()
+			currentStatement.Reset()
 
-			// Handle include inline
-			if incPath, ok := tryParseInclude(input); ok {
-				if err := executeInclude(incPath, env, out); err != nil {
+			// Handle include inline (keeps existing include behavior)
+			if incPath, ok := tryParseInclude(stmt); ok {
+				if err := executeInclude(incPath, object.NewEnvironment(), out); err != nil {
 					fmt.Fprintf(out, "Include error: %v\n", err)
 					return err
 				}
 				continue
 			}
 
-			l := lexer.New(input)
+			l := lexer.New(stmt)
 			p := parser.New(l)
-
 			program := p.ParseProgram()
 			if len(p.Errors()) != 0 {
 				printParserErrors(out, p.Errors())
 				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
 			}
 
-			evaluated := evaluator.Eval(program, env)
-			if evaluated != nil {
-				if evaluated.Type() == object.ERROR_OBJ {
-					if errObj, ok := evaluated.(*object.Error); ok {
-						if errObj.Filename == "" {
-							errObj.Filename = filename
+			if err := comp.Compile(program); err != nil {
+				return fmt.Errorf("Compilation error in file %s: %v", filename, err)
+			}
+
+			// Seed any undefined globals discovered during compilation so runtime
+			// accesses will produce Error objects with file/line info instead
+			// of causing unexpected instant exits.
+			for idx, e := range comp.UndefinedGlobals() {
+				if e == nil {
+					continue
+				}
+
+				// If the current statement is a `suppress` wrapping a
+				// let-declaration, avoid seeding undefined globals that
+				// originated on that same line. This prevents suppressed
+				// definitions from causing immediate prints at definition
+				// time; the entries will be seeded before the next
+				// statement execution (the loop seeds every iteration).
+				if ss, ok := program.Statements[0].(*ast.SuppressStatement); ok {
+					if ls, ok2 := ss.Statement.(*ast.LetStatement); ok2 {
+						if e.Line == ls.Token.Line {
+							continue
 						}
-						if errObj.Line == 0 {
-							errObj.Line = 1
-						}
-						if errObj.Column == 0 {
-							errObj.Column = 1
-						}
-						io.WriteString(out, errObj.Inspect())
-						io.WriteString(out, "\n")
 					}
-					return fmt.Errorf("Runtime error in file %s:\t%s\n", filename, evaluated.Inspect())
 				}
-				if evaluated.Type() != object.NULL_OBJ {
-					io.WriteString(out, evaluated.Inspect())
-					io.WriteString(out, "\n")
+
+				if e.Filename == "" {
+					e.Filename = filename
 				}
+				globals[idx] = e
+			}
+
+			bytecode := comp.Bytecode()
+			constants = bytecode.Constants
+
+			machine := vm.NewWithGlobalsStore(bytecode, globals)
+			if err := machine.Run(); err != nil {
+				io.WriteString(out, err.Error()+"\n")
+				return err
+			}
+
+			if last := machine.LastPoppedStackElem(); last != nil {
+				io.WriteString(out, last.Inspect()+"\n")
 			}
 		} else {
-			// Need more input for this statement, add a newline
-			currentInput.WriteString("\n")
+			currentStatement.WriteString("\n")
 		}
 	}
 
@@ -269,50 +303,37 @@ func ExecuteFile(filename string, out io.Writer) error {
 		return fmt.Errorf("Error reading file %s: %v", filename, err)
 	}
 
-	// Handle any remaining input
-	if currentInput.Len() > 0 {
-		input := currentInput.String()
-
-		// Handle include inline
-		if incPath, ok := tryParseInclude(input); ok {
-			if err := executeInclude(incPath, env, out); err != nil {
+	// Handle any remaining statement
+	if currentStatement.Len() > 0 {
+		stmt := currentStatement.String()
+		if incPath, ok := tryParseInclude(stmt); ok {
+			if err := executeInclude(incPath, object.NewEnvironment(), out); err != nil {
 				fmt.Fprintf(out, "Include error: %v\n", err)
 				return err
 			}
 			return nil
 		}
 
-		l := lexer.New(input)
+		l := lexer.New(stmt)
 		p := parser.New(l)
-
 		program := p.ParseProgram()
 		if len(p.Errors()) != 0 {
 			printParserErrors(out, p.Errors())
 			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
 		}
 
-		evaluated := evaluator.Eval(program, env)
-		if evaluated != nil {
-			if evaluated.Type() == object.ERROR_OBJ {
-				if errObj, ok := evaluated.(*object.Error); ok {
-					if errObj.Filename == "" {
-						errObj.Filename = filename
-					}
-					if errObj.Line == 0 {
-						errObj.Line = 1
-					}
-					if errObj.Column == 0 {
-						errObj.Column = 1
-					}
-					io.WriteString(out, errObj.Inspect())
-					io.WriteString(out, "\n")
-				}
-				return fmt.Errorf("Runtime error in file %s: %s", filename, evaluated.Inspect())
-			}
-			if evaluated.Type() != object.NULL_OBJ {
-				io.WriteString(out, evaluated.Inspect())
-				io.WriteString(out, "\n")
-			}
+		if err := comp.Compile(program); err != nil {
+			return fmt.Errorf("Compilation error in file %s: %v", filename, err)
+		}
+
+		bytecode := comp.Bytecode()
+		machine := vm.NewWithGlobalsStore(bytecode, globals)
+		if err := machine.Run(); err != nil {
+			io.WriteString(out, err.Error()+"\n")
+			return err
+		}
+		if last := machine.LastPoppedStackElem(); last != nil {
+			io.WriteString(out, last.Inspect()+"\n")
 		}
 	}
 
