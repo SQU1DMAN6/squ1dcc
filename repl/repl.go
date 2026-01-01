@@ -73,6 +73,8 @@ func needsContinuation(line string) bool {
 }
 
 func Start(in io.Reader, out io.Writer) {
+	// Ensure builtins write to the REPL output writer so tests can capture prints.
+	object.OutWriter = out
 	env := object.NewEnvironment()
 	_, err := user.Current()
 	if err != nil {
@@ -182,6 +184,9 @@ func executeInclude(path string, env *object.Environment, out io.Writer) error {
 }
 
 func ExecuteFile(filename string, out io.Writer) error {
+	// Ensure builtins write to the provided writer so file execution prints
+	// are captured by callers (tests, CLI, etc.).
+	object.OutWriter = out
 	file, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("Could not open file %s: %v", filename, err)
@@ -215,7 +220,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 	}
 
 	constants := []object.Object{}
-	comp := compiler.NewWithState(symbolTable, constants)
 
 	// Read the file and execute complete statements
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
@@ -250,14 +254,17 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
 			}
 
-			if err := comp.Compile(program); err != nil {
+			// Compile the current statement only into a temporary compiler
+			// that shares the global symbol table and current constants.
+			tmp := compiler.NewWithState(symbolTable, constants)
+			if err := tmp.Compile(program); err != nil {
 				return fmt.Errorf("Compilation error in file %s: %v", filename, err)
 			}
 
-			// Seed any undefined globals discovered during compilation so runtime
-			// accesses will produce Error objects with file/line info instead
-			// of causing unexpected instant exits.
-			for idx, e := range comp.UndefinedGlobals() {
+			// Seed any undefined globals discovered during this statement's
+			// compilation so runtime accesses will produce Error objects with
+			// file/line info instead of causing unexpected instant exits.
+			for idx, e := range tmp.UndefinedGlobals() {
 				if e == nil {
 					continue
 				}
@@ -282,7 +289,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 				globals[idx] = e
 			}
 
-			bytecode := comp.Bytecode()
+			bytecode := tmp.Bytecode()
 			constants = bytecode.Constants
 
 			machine := vm.NewWithGlobalsStore(bytecode, globals)
@@ -292,7 +299,9 @@ func ExecuteFile(filename string, out io.Writer) error {
 			}
 
 			if last := machine.LastPoppedStackElem(); last != nil {
-				io.WriteString(out, last.Inspect()+"\n")
+				if last.Type() != object.NULL_OBJ {
+					io.WriteString(out, last.Inspect()+"\n")
+				}
 			}
 		} else {
 			currentStatement.WriteString("\n")
@@ -322,18 +331,23 @@ func ExecuteFile(filename string, out io.Writer) error {
 			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
 		}
 
-		if err := comp.Compile(program); err != nil {
+		// Final statement: compile only this statement into a temporary
+		// compiler so we don't rerun previously-compiled code.
+		tmp := compiler.NewWithState(symbolTable, constants)
+		if err := tmp.Compile(program); err != nil {
 			return fmt.Errorf("Compilation error in file %s: %v", filename, err)
 		}
 
-		bytecode := comp.Bytecode()
+		bytecode := tmp.Bytecode()
 		machine := vm.NewWithGlobalsStore(bytecode, globals)
 		if err := machine.Run(); err != nil {
 			io.WriteString(out, err.Error()+"\n")
 			return err
 		}
 		if last := machine.LastPoppedStackElem(); last != nil {
-			io.WriteString(out, last.Inspect()+"\n")
+			if last.Type() != object.NULL_OBJ {
+				io.WriteString(out, last.Inspect()+"\n")
+			}
 		}
 	}
 

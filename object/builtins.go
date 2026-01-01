@@ -3,6 +3,7 @@ package object
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -39,6 +40,11 @@ var (
 	keyboardActive    = false
 	pendingCallbacks  []Object
 )
+
+// OutWriter is the writer used by builtins for printing side-effects (e.g., io.echo).
+// It defaults to os.Stdout but can be overridden by callers (like the REPL) so
+// tests and embedded runners can capture output.
+var OutWriter io.Writer = os.Stdout
 
 // termios structure for raw mode
 
@@ -458,7 +464,8 @@ var Builtins = []struct {
 			}
 
 			output := strings.Join(elements, " ")
-			return &String{Value: output}
+			fmt.Fprint(OutWriter, output)
+			return &Null{}
 		}, "io"),
 	},
 	{
