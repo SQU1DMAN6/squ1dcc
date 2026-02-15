@@ -1,0 +1,23 @@
+var sort = def(arr) {
+    var sorteddata = []
+
+    while (array.cat(arr) > 0) {
+
+        var smallest = arr[0]
+        var smallestIndex = 0
+        var i = 0
+
+        while (i < array.cat(arr)) {
+            if (arr[i] < smallest) {
+                smallest = arr[i]
+                smallestIndex = i
+            }
+            i = i + 1
+        }
+
+        sorteddata = array.append(sorteddata, smallest)
+        arr = array.remove(arr, smallestIndex)
+    }
+
+    return sorteddata
+}

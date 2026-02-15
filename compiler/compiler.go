@@ -65,7 +65,7 @@ func New() *Compiler {
 	// / REPL expects.
 	classes := object.CreateClassObjects()
 	builtinCount := len(object.Builtins)
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "keyboard"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
 	for _, className := range classNames {
 		if _, ok := classes[className]; ok {
 			symbolTable.DefineBuiltin(builtinCount, className)

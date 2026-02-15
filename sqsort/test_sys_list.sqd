@@ -1,0 +1,10 @@
+pkg.include("lib\\mylib.sqd", "mylib");
+var list = sys.list();
+io.write("Got sys.list()");
+io.echo();
+io.write("Checking for mylib: ");
+var has_mylib = "mylib" == type.d2s(type.tp(list.mylib));
+io.echo(has_mylib);
+io.echo();
+io.write("mylib contents:");
+io.echo(list.mylib);

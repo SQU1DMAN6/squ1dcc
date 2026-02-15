@@ -82,9 +82,15 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		return NULL
 
+	case *ast.WhileStatement:
+		return evalWhileLoop(node.Condition, node.Body, env)
+
 	// Expressions
 	case *ast.IntegerLiteral:
 		return &object.Integer{Value: node.Value}
+
+	case *ast.FloatLiteral:
+		return &object.Float{Value: node.Value}
 
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
@@ -178,6 +184,9 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.IfExpression:
 		return evalIfExpression(node, env)
 
+	case *ast.WhileExpression:
+		return evalWhileLoop(node.Condition, node.Body, env)
+
 	case *ast.BlockDirective:
 		// Evaluate inner statement/expression and if it produces an Error,
 		// propagate it so callers (like ExecuteFile) can handle an exit.
@@ -225,9 +234,17 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		// Special handling for pkg.include(filename, namespace)
 		if dotExpr, ok := node.Function.(*ast.DotExpression); ok {
 			if ident, ok := dotExpr.Left.(*ast.Identifier); ok && ident.Value == "pkg" {
-				if rhsIdent, ok := dotExpr.Right.(*ast.Identifier); ok && rhsIdent.Value == "include" {
-					// This is pkg.include() - handle specially
-					return evalPkgInclude(node, env)
+				switch rhs := dotExpr.Right.(type) {
+				case *ast.Identifier:
+					if rhs.Value == "include" {
+						// This is pkg.include() - handle specially
+						return evalPkgInclude(node, env)
+					}
+				case *ast.StringLiteral:
+					if rhs.Value == "include" {
+						// This is pkg.include() - handle specially
+						return evalPkgInclude(node, env)
+					}
 				}
 			}
 		}
@@ -495,6 +512,27 @@ func evalIfExpression(
 		return Eval(ie.Alternative, env)
 	} else {
 		return NULL
+	}
+}
+
+func evalWhileLoop(condition ast.Expression, body *ast.BlockStatement, env *object.Environment) object.Object {
+	for {
+		cond := Eval(condition, env)
+		if isError(cond) {
+			return cond
+		}
+
+		if !isTruthy(cond) {
+			return NULL
+		}
+
+		result := Eval(body, env)
+		if result != nil {
+			rt := result.Type()
+			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
+				return result
+			}
+		}
 	}
 }
 

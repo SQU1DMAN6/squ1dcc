@@ -1,0 +1,5 @@
+pkg.include("lib\\mylib.sqd", "mylib");
+
+io.write("Full sys.list():");
+io.echo();
+io.echo(sys.list());

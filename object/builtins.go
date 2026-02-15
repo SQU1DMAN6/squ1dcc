@@ -46,6 +46,18 @@ var (
 // tests and embedded runners can capture output.
 var OutWriter io.Writer = os.Stdout
 
+// ImportedNamespaces tracks user-defined classes/namespaces imported via pkg.include()
+// Maps namespace name to its Hash containing exported functions/variables
+var ImportedNamespaces = make(map[string]*Hash)
+
+// RegisterNamespace registers an imported namespace so it appears in sys.list()
+func RegisterNamespace(name string, ns *Hash) {
+	if ImportedNamespaces == nil {
+		ImportedNamespaces = make(map[string]*Hash)
+	}
+	ImportedNamespaces[name] = ns
+}
+
 // termios structure for raw mode
 
 // enableRawMode switches terminal to raw mode for immediate key detection
@@ -1332,6 +1344,57 @@ func GetBuiltinByName(name string) *Builtin {
 
 var GUIEventHandlers map[string][]Object
 
+// buildSystemList builds the sys.list hash at runtime
+func buildSystemList() *Hash {
+	result := &Hash{Pairs: make(map[HashKey]HashPair)}
+	classes := CreateClassObjects()
+	classOrder := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
+
+	// Add built-in classes and their methods (level 1 - core functionality)
+	for _, className := range classOrder {
+		if classHash, ok := classes[className]; ok {
+			// Create a hash of method names in this class
+			methodsHash := &Hash{Pairs: make(map[HashKey]HashPair)}
+			for key, pair := range classHash.Pairs {
+				// Store method name as both key and value for visibility
+				methodsHash.Pairs[key] = HashPair{Key: pair.Key, Value: pair.Key}
+			}
+
+			// Add the class to result
+			classNameStr := &String{Value: className}
+			result.Pairs[classNameStr.HashKey()] = HashPair{
+				Key:   classNameStr,
+				Value: methodsHash,
+			}
+		}
+	}
+
+	// Add user-defined imported namespaces (level 2 - from pkg.include())
+	for nsName, nsHash := range ImportedNamespaces {
+		if nsHash == nil {
+			continue
+		}
+		// Create a hash of variable/function names in this namespace
+		varsHash := &Hash{Pairs: make(map[HashKey]HashPair)}
+		for key, pair := range nsHash.Pairs {
+			// Store name as both key and value for visibility
+			varsHash.Pairs[key] = HashPair{Key: pair.Key, Value: pair.Key}
+		}
+
+		// Add the namespace to result
+		nsNameStr := &String{Value: nsName}
+		result.Pairs[nsNameStr.HashKey()] = HashPair{
+			Key:   nsNameStr,
+			Value: varsHash,
+		}
+	}
+
+	// Note: Local variables (level 3) would need to be added by the runtime/environment
+	// at execution time. This structure shows built-in classes and imported namespaces.
+
+	return result
+}
+
 func CreateClassObjects() map[string]*Hash {
 	classes := make(map[string]*Hash)
 
@@ -1379,6 +1442,20 @@ func CreateClassObjects() map[string]*Hash {
 		}
 	}
 
+	// Add sys.list manually to avoid circular init dependency
+	listBuiltin := &Builtin{
+		Fn: func(args ...Object) Object {
+			if len(args) != 0 {
+				return newError("Wrong number of arguments. Expected 0, got %d", len(args))
+			}
+			return buildSystemList()
+		},
+		Class:      "sys",
+		Attributes: make(map[string]Object),
+	}
+	listFuncName := &String{Value: "list"}
+	sysClass.Pairs[listFuncName.HashKey()] = HashPair{Key: listFuncName, Value: listBuiltin}
+
 	classes["io"] = ioClass
 	classes["type"] = typeClass
 	classes["time"] = timeClass
@@ -1402,4 +1479,74 @@ func ListDefinedClasses() string {
 	}
 	sort.Strings(classNames)
 	return strings.Join(classNames, ", ")
+}
+
+// BuildSysList creates a hash showing available classes, methods, and variables
+// Built-in classes first (with their methods), then user-defined classes/variables
+func BuildSysList(userDefinedClasses map[string]*Hash, userDefinedVariables map[string]Object) *Hash {
+	result := &Hash{Pairs: make(map[HashKey]HashPair)}
+
+	// Get all built-in classes
+	classes := CreateClassObjects()
+	classOrder := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
+
+	// Add built-in classes and their methods
+	for _, className := range classOrder {
+		if classHash, ok := classes[className]; ok {
+			// Create a hash of method names in this class
+			methodsHash := &Hash{Pairs: make(map[HashKey]HashPair)}
+			for key, pair := range classHash.Pairs {
+				// Store method name as both key and value for visibility
+				methodsHash.Pairs[key] = HashPair{Key: pair.Key, Value: pair.Key}
+			}
+
+			// Add the class to result
+			classNameStr := &String{Value: className}
+			result.Pairs[classNameStr.HashKey()] = HashPair{
+				Key:   classNameStr,
+				Value: methodsHash,
+			}
+		}
+	}
+
+	// Add user-defined imported classes (from pkg.include)
+	for className, classHash := range userDefinedClasses {
+		// Create a hash of variable names in this class
+		varsHash := &Hash{Pairs: make(map[HashKey]HashPair)}
+		for key, pair := range classHash.Pairs {
+			// Store variable name as both key and value for visibility
+			varsHash.Pairs[key] = HashPair{Key: pair.Key, Value: pair.Key}
+		}
+
+		// Add the imported class to result
+		classNameStr := &String{Value: className}
+		result.Pairs[classNameStr.HashKey()] = HashPair{
+			Key:   classNameStr,
+			Value: varsHash,
+		}
+	}
+
+	// Add user-defined local variables (capital letters = global)
+	if userDefinedVariables != nil {
+		varsHash := &Hash{Pairs: make(map[HashKey]HashPair)}
+		for varName := range userDefinedVariables {
+			// Only include global variables (starting with capital letter)
+			if len(varName) > 0 && varName[0] >= 'A' && varName[0] <= 'Z' {
+				varNameStr := &String{Value: varName}
+				varsHash.Pairs[varNameStr.HashKey()] = HashPair{
+					Key:   varNameStr,
+					Value: varNameStr, // Show variable name
+				}
+			}
+		}
+		if len(varsHash.Pairs) > 0 {
+			localStr := &String{Value: "locals"}
+			result.Pairs[localStr.HashKey()] = HashPair{
+				Key:   localStr,
+				Value: varsHash,
+			}
+		}
+	}
+
+	return result
 }

@@ -211,7 +211,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 	// Register class objects in the symbol table and pre-seed globals
 	globals := make([]object.Object, vm.GlobalsSize)
 	classes := object.CreateClassObjects()
-	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "keyboard"}
+	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
 	for _, className := range classNames {
 		if classObj, ok := classes[className]; ok {
 			sym := symbolTable.Define(className)
@@ -393,7 +393,7 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 		return fmt.Errorf("Evaluation error in '%s': %v", directive.Filename, evalResult)
 	}
 
-	// Extract all functions from the environment and create a namespace Hash
+	// Extract all functions and variables from the environment and create a namespace Hash
 	nsHash := &object.Hash{Pairs: make(map[object.HashKey]object.HashPair)}
 
 	storeContents := includeEnv.GetStore()
@@ -403,11 +403,13 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 			continue
 		}
 
-		// Include Functions and Builtins defined in the included file
-		switch obj.(type) {
-		case *object.Function:
-			key := &object.String{Value: name}
-			nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
+		// Include Functions, Closures, and other exportable objects (capital letters = global)
+		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+			switch obj.(type) {
+			case *object.Function, *object.Closure, *object.String, *object.Integer, *object.Float, *object.Boolean, *object.Array, *object.Hash:
+				key := &object.String{Value: name}
+				nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
+			}
 		}
 	}
 
@@ -416,6 +418,9 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 	if ns.Index < len(globals) {
 		globals[ns.Index] = nsHash
 	}
+
+	// Also register the namespace globally so sys.list() can find it
+	object.RegisterNamespace(directive.Namespace, nsHash)
 
 	return nil
 }

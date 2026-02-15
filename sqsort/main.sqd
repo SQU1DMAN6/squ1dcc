@@ -1,0 +1,7 @@
+pkg.include("lib\\sort2.sqd", "arraysort")
+
+var dataToSort = [47,46,45,49,47,48,47,47,49,47,46,46,46,50,50,45,50,48,46,50]
+var sorted = arraysort.sort(dataToSort)
+
+io.write(sorted)
+io.write(array.cat(sorted))
