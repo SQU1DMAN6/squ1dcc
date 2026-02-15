@@ -5,6 +5,7 @@ import (
 	"math"
 	"squ1d++/code"
 	"squ1d++/compiler"
+	"squ1d++/evaluator"
 	"squ1d++/object"
 )
 
@@ -728,6 +729,9 @@ func (vm *VM) executeCall(numArgs int) error {
 		return vm.callClosure(callee, numArgs)
 	case *object.Builtin:
 		return vm.callBuiltin(callee, numArgs)
+	case *object.Function:
+		// Support calling interpreter-mode functions (from included files evaluated with the evaluator)
+		return vm.callInterpreterFunction(callee, numArgs)
 	default:
 		return fmt.Errorf("Calling non-function and non-builtin function.")
 	}
@@ -768,6 +772,47 @@ func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 
 	if result != nil {
 		vm.push(result)
+	} else {
+		vm.push(Null)
+	}
+
+	return nil
+}
+
+func (vm *VM) callInterpreterFunction(fn *object.Function, numArgs int) error {
+	// Support for calling interpreter-mode (evaluator-created) functions
+	// These come from included files that are evaluated with the evaluator
+	if numArgs != len(fn.Parameters) {
+		return fmt.Errorf("Wrong number of arguments. Expected %d, got %d",
+			len(fn.Parameters), numArgs)
+	}
+
+	// Get arguments from stack
+	args := vm.stack[vm.sp-numArgs : vm.sp]
+
+	// Create a new environment extending the function's captured environment
+	callEnv := object.NewEnclosedEnvironment(fn.Env)
+
+	// Bind parameters to arguments
+	for paramIdx, param := range fn.Parameters {
+		callEnv.Set(param.Value, args[paramIdx])
+	}
+
+	// Evaluate the function body using the evaluator
+	result := evaluator.Eval(fn.Body, callEnv)
+
+	// Pop the arguments from the stack (and the function itself)
+	vm.sp = vm.sp - numArgs - 1
+
+	// Push the result onto the stack
+	if result != nil {
+		// Unwrap return values
+		switch result := result.(type) {
+		case *object.ReturnValue:
+			vm.push(result.Value)
+		default:
+			vm.push(result)
+		}
 	} else {
 		vm.push(Null)
 	}

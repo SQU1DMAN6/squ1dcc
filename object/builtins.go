@@ -683,6 +683,29 @@ var Builtins = []struct {
 			return &Null{}
 		}, "os"),
 	},
+	{
+		"iRuntime",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			info, ok := args[0].(*String)
+
+			if !ok {
+				return newError("Argument 0 to `iRuntime` must be STRING, got %s", args[0].Type())
+			}
+
+			switch info.Value {
+			case "os":
+				return &String{Value: runtime.GOOS}
+			case "arch":
+				return &String{Value: runtime.GOARCH}
+			default:
+				return newError("Argument 0 to `iRuntime` is unrecognised")
+			}
+		}, "os"),
+	},
 
 	// Time builtins
 	{
@@ -913,8 +936,8 @@ var Builtins = []struct {
 	{
 		"include",
 		createBuiltin(func(args ...Object) Object {
-			if len(args) != 1 {
-				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			if len(args) != 1 && len(args) != 2 {
+				return newError("Wrong number of arguments. Expected 1 or 2, got %d", len(args))
 			}
 
 			path, ok := args[0].(*String)
@@ -931,7 +954,23 @@ var Builtins = []struct {
 				return newError("Could not read file '%s': %v", path.Value, err)
 			}
 
-			return &String{Value: string(content)}
+			// If only 1 argument, return the content as before (backward compat)
+			if len(args) == 1 {
+				return &String{Value: string(content)}
+			}
+
+			// If 2 arguments, return an IncludeDirective that the runtime will handle
+			namespace, ok := args[1].(*String)
+			if !ok {
+				return newError("Argument 1 to `include` must be STRING, got %s", args[1].Type())
+			}
+
+			// Return a directive with the filename - the runtime will handle parsing/evaluation
+			return &IncludeDirective{
+				Namespace: namespace.Value,
+				Filename:  path.Value,
+				Functions: &Hash{Pairs: make(map[HashKey]HashPair)}, // Will be populated by runtime
+			}
 		}, "pkg"),
 	},
 	{

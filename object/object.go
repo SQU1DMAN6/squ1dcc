@@ -27,6 +27,7 @@ const (
 	HASH_OBJ              = "HASH"
 	COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION_OBJ"
 	CLOSURE_OBJ           = "CLOSURE"
+	INCLUDE_DIRECTIVE_OBJ = "INCLUDE_DIRECTIVE"
 )
 
 type HashKey struct {
@@ -229,4 +230,15 @@ type Closure struct {
 func (c *Closure) Type() ObjectType { return CLOSURE_OBJ }
 func (c *Closure) Inspect() string {
 	return fmt.Sprintf("Closure[%p]", c)
+}
+
+type IncludeDirective struct {
+	Namespace string
+	Filename  string
+	Functions *Hash
+}
+
+func (id *IncludeDirective) Type() ObjectType { return INCLUDE_DIRECTIVE_OBJ }
+func (id *IncludeDirective) Inspect() string {
+	return fmt.Sprintf("IncludeDirective[%s from %s]", id.Namespace, id.Filename)
 }

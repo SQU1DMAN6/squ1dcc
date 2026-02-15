@@ -2,8 +2,11 @@ package evaluator
 
 import (
 	"fmt"
+	"os"
 	"squ1d++/ast"
+	"squ1d++/lexer"
 	"squ1d++/object"
+	"squ1d++/parser"
 )
 
 var (
@@ -219,6 +222,16 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return &object.Function{Parameters: params, Env: env, Body: body}
 
 	case *ast.CallExpression:
+		// Special handling for pkg.include(filename, namespace)
+		if dotExpr, ok := node.Function.(*ast.DotExpression); ok {
+			if ident, ok := dotExpr.Left.(*ast.Identifier); ok && ident.Value == "pkg" {
+				if rhsIdent, ok := dotExpr.Right.(*ast.Identifier); ok && rhsIdent.Value == "include" {
+					// This is pkg.include() - handle specially
+					return evalPkgInclude(node, env)
+				}
+			}
+		}
+
 		function := Eval(node.Function, env)
 		if isError(function) {
 			return function
@@ -324,6 +337,8 @@ func evalInfixExpression(
 	switch {
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalIntegerInfixExpression(operator, left, right)
+	case left.Type() == object.FLOAT_OBJ && right.Type() == object.FLOAT_OBJ:
+		return evalFloatInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
 	case operator == "==":
@@ -397,6 +412,44 @@ func evalIntegerInfixExpression(
 		return nativeBoolToBooleanObject(leftVal < rightVal)
 	case ">":
 		return nativeBoolToBooleanObject(leftVal > rightVal)
+	case "<=":
+		return nativeBoolToBooleanObject(leftVal <= rightVal)
+	case ">=":
+		return nativeBoolToBooleanObject(leftVal >= rightVal)
+	case "==":
+		return nativeBoolToBooleanObject(leftVal == rightVal)
+	case "!=":
+		return nativeBoolToBooleanObject(leftVal != rightVal)
+	default:
+		return newError("Unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
+	}
+}
+
+func evalFloatInfixExpression(
+	operator string,
+	left, right object.Object,
+) object.Object {
+	leftVal := left.(*object.Float).Value
+	rightVal := right.(*object.Float).Value
+
+	switch operator {
+	case "+":
+		return &object.Float{Value: leftVal + rightVal}
+	case "-":
+		return &object.Float{Value: leftVal - rightVal}
+	case "*":
+		return &object.Float{Value: leftVal * rightVal}
+	case "/":
+		return &object.Float{Value: leftVal / rightVal}
+	case "<":
+		return nativeBoolToBooleanObject(leftVal < rightVal)
+	case ">":
+		return nativeBoolToBooleanObject(leftVal > rightVal)
+	case "<=":
+		return nativeBoolToBooleanObject(leftVal <= rightVal)
+	case ">=":
+		return nativeBoolToBooleanObject(leftVal >= rightVal)
 	case "==":
 		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
@@ -769,4 +822,79 @@ func findUndefinedInNode(node ast.Node, env *object.Environment, params map[stri
 		}
 	}
 	return nil
+}
+
+// evalPkgInclude evaluates pkg.include(filename, namespace) which loads a file
+// and makes its functions available under a namespace
+func evalPkgInclude(node *ast.CallExpression, env *object.Environment) object.Object {
+	if len(node.Arguments) != 2 {
+		return newError("pkg.include expects 2 arguments (filename, namespace), got %d", len(node.Arguments))
+	}
+
+	// Evaluate the filename argument
+	fileArg := Eval(node.Arguments[0], env)
+	if isError(fileArg) {
+		return fileArg
+	}
+
+	filename, ok := fileArg.(*object.String)
+	if !ok {
+		return newError("First argument to pkg.include must be STRING, got %s", fileArg.Type())
+	}
+
+	// Evaluate the namespace argument
+	nsArg := Eval(node.Arguments[1], env)
+	if isError(nsArg) {
+		return nsArg
+	}
+
+	namespace, ok := nsArg.(*object.String)
+	if !ok {
+		return newError("Second argument to pkg.include must be STRING, got %s", nsArg.Type())
+	}
+
+	// Read the file
+	content, err := os.ReadFile(filename.Value)
+	if err != nil {
+		return newError("Failed to read file '%s': %v", filename.Value, err)
+	}
+
+	// Parse the file
+	l := lexer.New(string(content))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		return newError("Parse errors in '%s': %v", filename.Value, p.Errors())
+	}
+
+	// Create a new environment that inherits from the current one
+	// This allows the included code to access builtins and other definitions
+	includeEnv := object.NewEnclosedEnvironment(env)
+
+	// Evaluate the program in the new environment
+	evalResult := Eval(program, includeEnv)
+	if isError(evalResult) {
+		return evalResult
+	}
+
+	// Now extract all variables from the included environment that are Functions/Builtins
+	// and create a Hash to represent the namespace
+	nsHash := &object.Hash{Pairs: make(map[object.HashKey]object.HashPair)}
+
+	// Get all keys from the include environment's store (not outer)
+	for name, obj := range includeEnv.GetStore() {
+		// Skip internal/builtin variables - only include user-defined functions
+		// We check if it's a Function or Builtin that was defined in this file
+		switch obj.(type) {
+		case *object.Function, *object.Builtin:
+			key := &object.String{Value: name}
+			nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
+		}
+	}
+
+	// Set the namespace in the calling environment
+	env.Set(namespace.Value, nsHash)
+
+	return &object.Null{}
 }

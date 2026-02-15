@@ -695,10 +695,41 @@ pkg.remove("mypackage");
 
 ### File Includes
 
-You can include other SQU1DLang files using the `include()` function:
+You can include other SQU1DLang files using the `pkg.include()` function. There are two modes:
+
+#### Including with Return Value
+
+Returns the file contents as a string:
 
 ```squ1d
-pkg.include("library.sqd");
+var content = pkg.include("library.sqd");
+```
+
+#### Including with Namespace (Recommended for Libraries)
+
+Include functions from another file and access them via a namespace:
+
+```squ1d
+pkg.include("lib/math_utils.sqd", "math");
+var result = math.add(5, 10);
+var maxVal = math.max([1, 5, 3, 9]);
+```
+
+This is the recommended way to structure modular code. All functions defined in the included file will be accessible through the namespace using dot notation.
+
+**Example library file (`lib/math_utils.sqd`):**
+
+```squ1d
+var add = def(a, b) { a + b };
+var max = def(arr) { 
+    var m = arr[0];
+    var i = 1;
+    while (i < len(arr)) {
+        if (arr[i] > m) { m = arr[i]; };
+        i = i + 1;
+    };
+    m
+};
 ```
 
 The include system searches in the current directory, `./lib/` directory, and user's package cache.

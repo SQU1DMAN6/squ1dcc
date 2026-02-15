@@ -298,8 +298,15 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return err
 			}
 
+			// Check if the result is an IncludeDirective
 			if last := machine.LastPoppedStackElem(); last != nil {
-				if last.Type() != object.NULL_OBJ {
+				if directive, ok := last.(*object.IncludeDirective); ok {
+					// Handle the inclusion by parsing and executing the file
+					if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
+						fmt.Fprintf(out, "Include error: %v\n", err)
+						return err
+					}
+				} else if last.Type() != object.NULL_OBJ {
 					io.WriteString(out, last.Inspect()+"\n")
 				}
 			}
@@ -349,6 +356,65 @@ func ExecuteFile(filename string, out io.Writer) error {
 				io.WriteString(out, last.Inspect()+"\n")
 			}
 		}
+	}
+
+	return nil
+}
+
+// executeIncludeDirective handles pkg.include() directives by loading and evaluating a file
+// and registering its functions in the symbol table and globals
+func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, caller string, out io.Writer) error {
+	// Read the include file
+	content, err := os.ReadFile(directive.Filename)
+	if err != nil {
+		return fmt.Errorf("Failed to read include file '%s': %v", directive.Filename, err)
+	}
+
+	// Parse the file
+	l := lexer.New(string(content))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		return fmt.Errorf("Parse errors in '%s': %v", directive.Filename, p.Errors())
+	}
+
+	// Create a new environment for the included file
+	// Seed it with all class objects and builtins
+	includeEnv := object.NewEnvironment()
+	classes := object.CreateClassObjects()
+	for className, classObj := range classes {
+		includeEnv.Set(className, classObj)
+	}
+
+	// Evaluate the program in this new environment
+	evalResult := evaluator.Eval(program, includeEnv)
+	if evalResult != nil && evalResult.Type() == object.ERROR_OBJ {
+		return fmt.Errorf("Evaluation error in '%s': %v", directive.Filename, evalResult)
+	}
+
+	// Extract all functions from the environment and create a namespace Hash
+	nsHash := &object.Hash{Pairs: make(map[object.HashKey]object.HashPair)}
+
+	storeContents := includeEnv.GetStore()
+	for name, obj := range storeContents {
+		// Skip built-in classes - only include user-defined objects
+		if _, isBuiltin := classes[name]; isBuiltin {
+			continue
+		}
+
+		// Include Functions and Builtins defined in the included file
+		switch obj.(type) {
+		case *object.Function:
+			key := &object.String{Value: name}
+			nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
+		}
+	}
+
+	// Register the namespace as a variable in the symbol table and globals
+	ns := symbolTable.Define(directive.Namespace)
+	if ns.Index < len(globals) {
+		globals[ns.Index] = nsHash
 	}
 
 	return nil
