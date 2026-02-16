@@ -957,27 +957,25 @@ var Builtins = []struct {
 				return newError("Argument 0 to `include` must be STRING, got %s", args[0].Type())
 			}
 
-			if _, err := os.Stat(path.Value); os.IsNotExist(err) {
-				return newError("File '%s' not found", path.Value)
-			}
-
-			content, err := os.ReadFile(path.Value)
-			if err != nil {
-				return newError("Could not read file '%s': %v", path.Value, err)
-			}
-
-			// If only 1 argument, return the content as before (backward compat)
+			// If only 1 argument, read and return file contents (backward compat)
 			if len(args) == 1 {
+				if _, err := os.Stat(path.Value); os.IsNotExist(err) {
+					return newError("File '%s' not found", path.Value)
+				}
+				content, err := os.ReadFile(path.Value)
+				if err != nil {
+					return newError("Could not read file '%s': %v", path.Value, err)
+				}
 				return &String{Value: string(content)}
 			}
 
-			// If 2 arguments, return an IncludeDirective that the runtime will handle
+			// For the 2-argument form (namespace), we return an IncludeDirective and
+			// let the runtime resolve the filename relative to the calling file.
 			namespace, ok := args[1].(*String)
 			if !ok {
 				return newError("Argument 1 to `include` must be STRING, got %s", args[1].Type())
 			}
 
-			// Return a directive with the filename - the runtime will handle parsing/evaluation
 			return &IncludeDirective{
 				Namespace: namespace.Value,
 				Filename:  path.Value,

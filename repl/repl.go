@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"path/filepath"
 	"squ1d++/ast"
 	"squ1d++/compiler"
 	"squ1d++/evaluator"
@@ -364,10 +365,33 @@ func ExecuteFile(filename string, out io.Writer) error {
 // executeIncludeDirective handles pkg.include() directives by loading and evaluating a file
 // and registering its functions in the symbol table and globals
 func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *compiler.SymbolTable, constants *[]object.Object, globals []object.Object, caller string, out io.Writer) error {
-	// Read the include file
-	content, err := os.ReadFile(directive.Filename)
+	// Resolve the include filename relative to the caller and common locations
+	// Normalize path separators in the directive filename so relative joins work
+	normalized := filepath.Clean(strings.ReplaceAll(directive.Filename, "\\", string(os.PathSeparator)))
+	candidates := []string{normalized}
+	// Try relative to caller's directory
+	if caller != "" {
+		candidates = append(candidates, filepath.Join(filepath.Dir(caller), normalized))
+		candidates = append(candidates, filepath.Join(filepath.Dir(caller), "lib", normalized))
+	}
+	candidates = append(candidates, filepath.Join("lib", normalized))
+
+	var content []byte
+	var err error
+	var chosen string
+	for _, c := range candidates {
+		if fi, statErr := os.Stat(c); statErr == nil && !fi.IsDir() {
+			chosen = c
+			break
+		}
+	}
+	if chosen == "" {
+		return fmt.Errorf("Failed to read include file '%s': file not found", directive.Filename)
+	}
+
+	content, err = os.ReadFile(chosen)
 	if err != nil {
-		return fmt.Errorf("Failed to read include file '%s': %v", directive.Filename, err)
+		return fmt.Errorf("Failed to read include file '%s': %v", chosen, err)
 	}
 
 	// Parse the file
@@ -403,13 +427,11 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 			continue
 		}
 
-		// Include Functions, Closures, and other exportable objects (capital letters = global)
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			switch obj.(type) {
-			case *object.Function, *object.Closure, *object.String, *object.Integer, *object.Float, *object.Boolean, *object.Array, *object.Hash:
-				key := &object.String{Value: name}
-				nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
-			}
+		// Include Functions and Builtins (match REPL behavior)
+		switch obj.(type) {
+		case *object.Function, *object.Builtin, *object.Closure:
+			key := &object.String{Value: name}
+			nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
 		}
 	}
 

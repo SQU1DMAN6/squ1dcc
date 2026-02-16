@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"squ1d++/bytecode"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
@@ -255,7 +256,39 @@ func expandIncludes(code string, baseDir string) (string, error) {
 				return "", fmt.Errorf("error expanding include %s: %v", found, err)
 			}
 
-			result = append(result, expandedInclude)
+			// Check if a namespace was provided in the include call
+			// Look for a second string argument after the filename
+			rest := trimmed[startIdx+1+endIdx+1:]
+			ns := ""
+			if idx := strings.Index(rest, `"`); idx != -1 {
+				idx2 := strings.Index(rest[idx+1:], `"`)
+				if idx2 != -1 {
+					ns = rest[idx+1 : idx+1+idx2]
+				}
+			}
+
+			if ns == "" {
+				// No namespace requested — inline the expanded include
+				result = append(result, expandedInclude)
+				continue
+			}
+
+			// Build a namespaced wrapper that executes the included file in a local
+			// function scope and returns an object/hash containing exported symbols.
+			exported := findTopLevelVars(expandedInclude)
+
+			wrapper := "var " + ns + " = (def() {\n"
+			wrapper += expandedInclude + "\n"
+			wrapper += "return {"
+			for i, name := range exported {
+				if i > 0 {
+					wrapper += ","
+				}
+				wrapper += name + ": " + name
+			}
+			wrapper += "}\n})()"
+
+			result = append(result, wrapper)
 			continue
 		}
 
@@ -310,4 +343,24 @@ func findLibrary(libPath string, baseDir string) string {
 		}
 	}
 	return ""
+}
+
+// findTopLevelVars returns a list of top-level variable names declared in the
+// provided SQU1D++ source. It looks for lines like `var name =`.
+func findTopLevelVars(src string) []string {
+	re := regexp.MustCompile(`(?m)^\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s*=`)
+	matches := re.FindAllStringSubmatch(src, -1)
+	names := make([]string, 0, len(matches))
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		name := m[1]
+		if !seen[name] {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+	return names
 }
