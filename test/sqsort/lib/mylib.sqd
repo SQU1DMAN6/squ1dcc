@@ -1,0 +1,9 @@
+var Greeting = "Hello from MyLib";
+
+var SayHello = def(name) {
+    return Greeting + " " + name;
+};
+
+var Add = def(a, b) {
+    return a + b;
+};
