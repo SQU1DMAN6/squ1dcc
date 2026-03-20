@@ -42,5 +42,5 @@ Turn SQU1DLang into a full compiler with standalone deployment, strong control-f
 
 ## Validation
 - [x] `go test ./...`
-- [x] Manual cross-dir `squ1dpp -B -o /tmp/new.out /tmp/new.sqd`
+- [x] Manual cross-dir `squ1dcc -B -o /tmp/new.out /tmp/new.sqd`
 

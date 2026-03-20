@@ -95,7 +95,6 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
-	// Support error-pipe as a prefix operator so `<< expr` can appear in any expression position
 	p.registerPrefix(token.ERROR_PIPE, p.parsePrefixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
@@ -117,6 +116,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.FUNCTION, p.parseFunctionLiteral)
+	p.registerPrefix(token.SHIFT_RIGHT, p.parseFunctionLiteral)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.DOT, p.parseDotExpression)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
@@ -172,16 +172,13 @@ func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	exp := &ast.DotExpression{Token: p.curToken, Left: left}
 	p.nextToken()
 
-	// If the right side is an identifier, convert it to a string literal
 	if p.curToken.Type == token.IDENT {
-		// Create a string literal from the identifier
 		stringToken := token.Token{
 			Type:    token.STRING,
 			Literal: p.curToken.Literal,
 		}
 		stringLiteral := &ast.StringLiteral{Token: stringToken, Value: p.curToken.Literal}
 		exp.Right = stringLiteral
-		// Don't call p.nextToken() here - let the caller handle it
 	} else {
 		exp.Right = p.parseExpression(DOT)
 	}
@@ -632,6 +629,10 @@ func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
 }
 
 func (p *Parser) parseStatement() ast.Statement {
+	if p.curToken.Type == token.IDENT && p.peekTokenIs(token.SHIFT_RIGHT) {
+		return p.parseFunctionDefinitionStatement()
+	}
+
 	switch p.curToken.Type {
 	case token.LET:
 		return p.parseLetStatement()
@@ -716,6 +717,37 @@ func (p *Parser) parseContinueStatement() ast.Statement {
 	return stmt
 }
 
+func (p *Parser) parseFunctionDefinitionStatement() ast.Statement {
+	name := p.curToken.Literal
+
+	if !p.expectPeek(token.SHIFT_RIGHT) {
+		return nil
+	}
+
+	// Current token now points to SHIFT_RIGHT
+	function := p.parseFunctionLiteral()
+	if function == nil {
+		return nil
+	}
+
+	fn, ok := function.(*ast.FunctionLiteral)
+	if !ok {
+		return nil
+	}
+
+	fn.Name = name
+
+	stmt := &ast.LetStatement{Token: p.curToken}
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: name}
+	stmt.Value = fn
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
 func (p *Parser) parseForStatement() ast.Statement {
 	stmt := &ast.ForStatement{Token: p.curToken}
 
@@ -723,7 +755,6 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return nil
 	}
 
-	// Parse initialization statement (optional)
 	p.nextToken()
 	if !p.curTokenIs(token.SEMICOLON) {
 		if p.curTokenIs(token.LET) {
@@ -744,7 +775,6 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return nil
 	}
 
-	// Parse condition expression (optional)
 	p.nextToken()
 	if !p.curTokenIs(token.SEMICOLON) {
 		stmt.Condition = p.parseExpression(LOWEST)
@@ -754,7 +784,6 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return nil
 	}
 
-	// Parse update expression (optional)
 	p.nextToken()
 	if !p.curTokenIs(token.RPAREN) {
 		stmt.Update = p.parseExpression(LOWEST)
@@ -820,13 +849,11 @@ func (p *Parser) peekError(t token.TokenType) {
 	p.errors = append(p.errors, msg)
 }
 
-// getErrorContext returns a formatted string showing the line with an error and a pointer to the error location
 func (p *Parser) getErrorContext(line, column int) string {
 	if p.l == nil {
 		return ""
 	}
 
-	// Get the input from the lexer
 	input := p.l.GetInput()
 	if input == "" {
 		return ""
@@ -837,10 +864,8 @@ func (p *Parser) getErrorContext(line, column int) string {
 		return ""
 	}
 
-	// Get the line with the error (1-indexed)
 	errorLine := lines[line-1]
 
-	// Create a pointer string
 	pointer := ""
 	if column > 0 && column <= len(errorLine) {
 		pointer = strings.Repeat(" ", column-1) + "^"

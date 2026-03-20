@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"squ1d++/ast"
 	"squ1d++/compiler"
@@ -225,6 +226,61 @@ func testExpectedObject(
 	}
 }
 
+func runVmTestWithOutput(t *testing.T, input string) (string, object.Object) {
+	oldWriter := object.OutWriter
+	buf := &bytes.Buffer{}
+	object.OutWriter = buf
+	defer func() { object.OutWriter = oldWriter }()
+
+	program := parse(input)
+	comp := compiler.New()
+	if err := comp.Compile(program); err != nil {
+		t.Fatalf("Compiler error: %s", err)
+	}
+
+	vm := New(comp.Bytecode())
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM error: %s", err)
+	}
+
+	return buf.String(), vm.LastPoppedStackElem()
+}
+
+func TestIOWriteAndLoopFixes(t *testing.T) {
+	output, val := runVmTestWithOutput(t, `
+		var i = 0;
+		for (var i = 0; i < 3; i = i + 1) {
+			io.echo(i);
+		}
+		1
+		`)
+
+	if output != "012" {
+		t.Fatalf("expected io.echo output '012', got %q", output)
+	}
+
+	if got, ok := val.(*object.Integer); !ok || got.Value != 1 {
+		t.Fatalf("expected final value 1, got %T (%v)", val, val)
+	}
+
+	output, val = runVmTestWithOutput(t, `
+		var i = 0;
+		while (i < 2) {
+			io.echo(i);
+			i = i + 1;
+		}
+		2
+		`)
+
+	if output != "01" {
+		t.Fatalf("expected io.echo output '01', got %q", output)
+	}
+
+	if got, ok := val.(*object.Integer); !ok || got.Value != 2 {
+		t.Fatalf("expected final value 2, got %T (%v)", val, val)
+	}
+}
+
 func TestIntegerArithmetic(t *testing.T) {
 	tests := []vmTestCase{
 		{"1", 1},
@@ -415,6 +471,15 @@ func TestFunctionsWithoutReturnValue(t *testing.T) {
 			`,
 			expected: Null,
 		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestFunctionArrowSyntaxRuntime(t *testing.T) {
+	tests := []vmTestCase{
+		{"var fn = >> () { return 5; }; fn();", 5},
+		{"g >> () { return 7; }; g();", 7},
 	}
 
 	runVmTests(t, tests)

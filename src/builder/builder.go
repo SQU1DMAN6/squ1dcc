@@ -111,7 +111,7 @@ func main() {
 	// Initialize VM state
 	globals := make([]object.Object, vm.GlobalsSize)
 	symbolTable := compiler.NewSymbolTable()
-	
+
 	// Register builtins
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
@@ -332,7 +332,7 @@ func expandIncludes(code string, baseDir string) (string, error) {
 				if i > 0 {
 					wrapper += ","
 				}
-				wrapper += name + ": " + name
+				wrapper += fmt.Sprintf("%s: %s", name, name)
 			}
 			wrapper += "}\n})()"
 

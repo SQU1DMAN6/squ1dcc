@@ -78,7 +78,6 @@ func (l *Lexer) NextToken() token.Token {
 				return tok
 			}
 
-			// This is just an integer
 			tok.Type = token.INT
 			tok.Literal = l.input[position:l.position]
 			tok.Line = startLine
@@ -133,7 +132,11 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Column = startCol
 		}
 	case '>':
-		if l.peekChar() == '=' {
+		if l.peekChar() == '>' {
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.SHIFT_RIGHT, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
+		} else if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{Type: token.GE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}

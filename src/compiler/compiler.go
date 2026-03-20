@@ -414,8 +414,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// Exit loop context (patches break/continue jumps)
 		c.exitLoop()
 
-		// Pop the condition result and push null as the result of the while loop
-		c.emit(code.OpPop)
+		// Push null as the result of the while loop
 		c.emit(code.OpNull)
 
 	case *ast.LetStatement:
