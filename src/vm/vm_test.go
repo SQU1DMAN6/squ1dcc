@@ -8,6 +8,7 @@ import (
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +91,10 @@ func TestHashLiterals(t *testing.T) {
 				(&object.Integer{Value: 6}).HashKey(): 16,
 			},
 		},
+		{
+			"{sort: 1}.sort",
+			int64(1),
+		},
 	}
 
 	runVmTests(t, tests)
@@ -110,6 +115,26 @@ func TestIndexExpressions(t *testing.T) {
 	}
 
 	runVmTests(t, tests)
+}
+
+func TestInfiniteLoopLimit(t *testing.T) {
+	input := "while (true) { }"
+	program := parse(input)
+
+	comp := compiler.New()
+	err := comp.Compile(program)
+	if err != nil {
+		t.Fatalf("Compiler error: %s", err)
+	}
+
+	vm := New(comp.Bytecode())
+	err = vm.Run()
+	if err == nil {
+		t.Fatalf("Expected error for infinite loop, got nil")
+	}
+	if !strings.Contains(err.Error(), "max instruction count exceeded") {
+		t.Fatalf("Expected max instruction count error, got: %s", err)
+	}
 }
 
 func runVmTests(t *testing.T, tests []vmTestCase) {

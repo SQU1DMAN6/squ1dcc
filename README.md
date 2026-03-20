@@ -1,6 +1,6 @@
 # SQU1DLang Programming Language
 
-SQU1DLang is a dynamic programming language with a clean syntax. This document provides a comprehensive guide to the language's syntax and features.
+SQU1DLang is a dynamic programming language that runs on the SQU1D++ compiler + VM runtime. This document is a practical guide to the currently implemented syntax and features.
 
 ## Table of Contents
 
@@ -12,7 +12,9 @@ SQU1DLang is a dynamic programming language with a clean syntax. This document p
 - [Data Structures](#data-structures)
 - [Built-in Functions](#built-in-functions)
 - [Operators](#operators)
-- [Examples](#examples)
+- [Language Features](#language-features)
+- [Compiler Architecture](#compiler-architecture)
+- [Getting Started](#getting-started)
 
 ## Basic Syntax
 
@@ -20,7 +22,12 @@ SQU1DLang uses a simple, expression-based syntax where functions are key.
 
 ## Comments
 
-Comments in SQU1DLang use the hash sign (`#`), and can be terminated with another hash sign.
+Comments use `# ... #` delimiters.
+
+```squ1d
+# this is a comment #
+var x = 1
+```
 
 ### Statement Termination
 
@@ -108,7 +115,17 @@ suppress 123 + 456
 
 ### Function Declaration
 
-Functions are declared using the `def` keyword, and may be assigned to a variable if one wishes to call them later:
+Functions can be declared in two supported forms:
+
+```squ1d
+var add = def(a, b) {
+    return a + b
+}
+
+addNamed >> (a, b) {
+    return a + b
+}
+```
 
 ### Function Calls
 
@@ -197,7 +214,7 @@ while (true) {
 
 ```
 
-Note that a `while (true)` loop should have a break or exit statement to prevent a stack overflow.
+Note that `while (true)` loops should still have an exit condition. Runtime guards (`SysMaxInstructionCount`, `SysMaxLoopIterations`) stop runaway loops, but explicit termination is recommended.
 
 ## Error Handling
 
@@ -228,9 +245,23 @@ var func = def() { return 20 }
 var y = << func()
 var z = func()
 
-io.write(y) # null
-io.write(z) # 20
+io.echo(y) # null
+io.echo(z) # 20
 ```
+
+## Performance
+
+SQU1DLang performance is evaluated with a compiler/VM pipeline (lexer, parser, compiler, bytecode VM), which is more comparable to JITed runtimes like LuaJIT or Graal.
+
+- Loop handling is now bound-checked by `SysMaxInstructionCount` and `SysMaxLoopIterations` to avoid runaway `while true` cycles and stack overflow.
+- Object allocation uses memory pooling in `object.NewArray` / `object.NewHash` and reuse via `ReleaseArray` / `ReleaseHash`.
+- Evaluator-style AST interpretation is being migrated to compiled VM execution in REPL for better throughput and predictability.
+
+Compared with C++ and Rust:
+
+- C++/Rust has raw native speed and manual control of memory; SQU1DLang offers managed heap and GC-friendly object reuse with safety checks.
+- SQU1DLang has lower latency for quick scripting, and compile+VM avoids interpreter overhead.
+- For heavy numeric loops, build `-B` to embed and avoid runtime lexer/parser overhead.
 
 ## Data Structures
 
@@ -272,241 +303,55 @@ var age = person["age"];
 
 ## Built-in Functions
 
-SQU1DLang provides several built-in functions organized into different categories:
+Built-ins are class-scoped and accessed with dot notation.
 
-### I/O Functions:
+### `io`
 
-```squ1d
-var input = io.read()
-var output = io.write(input)
-```
+- `io.read([prompt])` reads input and auto-parses to `Integer`, `Float`, or `String`.
+- `io.write(...)` returns a single joined `String` (it does not print by itself).
+- `io.echo(...)` prints to output.
 
-Returns values to the console:
+### `type`
 
-```squ1d
-io.write("Hello, World!");
-io.write("Value:", 42);
-```
+- `type.tp`, `type.i2fl`, `type.fl2i`, `type.s2i`, `type.s2fl`, `type.d2s`
 
-Prints values to the console:
+### `math`
 
-```squ1d
-io.echo("Hello, World!");
-io.echo("Value:", 42);
-```
+- `math.abs`, `math.sqrt`, `math.pow`, `math.rand`, `math.sin`, `math.cos`, `math.pi`, `math.e`
 
-#### `io.read([prompt])`
+### `time`
 
-Reads input from the user:
+- `time.now`, `time.sleep`
 
-```squ1d
-var input = io.read();
-var name = io.read("Enter your name: ");
-```
+### `os`
 
-#### `array.cat(value)`
+- `os.env`, `os.exec`, `os.exit`, `os.iRuntime`
 
-Returns the length of a string or array:
+### `string`
 
-```squ1d
-var len = array.cat("hello");        # Returns 5
-var count = array.cat([1, 2, 3]);    # Returns 3
-```
+- `string.upper`, `string.lower`, `string.trim`, `string.sepr`
 
-#### `array.append(array, value)`
+### `array`
 
-Adds an element to the end of an array:
+- `array.append`, `array.pop`, `array.remove`, `array.cat`, `array.join`
 
-```squ1d
-var numbers = [1, 2, 3];
-var extended = array.append(numbers, 4);  # Returns [1, 2, 3, 4]
-```
+### `file`
 
-#### `type.tp(value)`
+- `file.read`, `file.write`
 
-Returns the type of a value as a string:
+### `pkg`
 
-```squ1d
-type.tp(42);        # Returns "Integer"
-type.tp("hello");   # Returns "String"
-type.tp([1, 2]);    # Returns "Array"
-type.tp({});        # Returns "Object"
-type.tp(true);      # Returns "Boolean"
-```
+- `pkg.include(path)` returns file contents as `String`.
+- `pkg.include(path, namespace)` imports top-level functions under `namespace`.
+- `pkg.create`, `pkg.list`, `pkg.remove`
 
-### Math Functions
+### `sys`
 
-#### `math.abs(value)`
+- `sys.gc`, `sys.set_overflow_size`, `sys.get_overflow_size`, `sys.list`
 
-Returns the absolute value of a number:
+### `keyboard`
 
-```squ1d
-math.abs(-5)    # Returns 5
-math.abs(3.14)  # Returns 3.14
-```
-
-#### `math.sqrt(value)`
-
-Returns the square root of a number:
-
-```squ1d
-math.sqrt(16)
-math.sqrt(2)
-```
-
-#### `math.pow(base, exponent)`
-
-Returns base raised to the power of exponent:
-
-```squ1d
-io.write(pow(2, 3));  # Returns 8
-io.write(pow(3, 2));  # Returns 9
-```
-
-#### `math.sin(value)`, `math.cos(value)`
-
-Mathematical constants:
-
-```squ1d
-math.pi()   # Returns 3.141592653589793
-math.e()    # Returns 2.718281828459045
-```
-
-### String Functions
-
-#### `string.upper(string)`
-
-Converts a string to uppercase:
-
-```squ1d
-string.upper("hello")  # Returns "HELLO"
-```
-
-#### `string.lower(string)`
-
-Converts a string to lowercase:
-
-```squ1d
-string.lower("WORLD")  # Returns "world"
-```
-
-#### `string.trim(string)`
-
-Removes whitespace from both ends of a string:
-
-```squ1d
-string.trim("  hello  ")  # Returns "hello"
-```
-
-### System Functions
-
-#### `os.env(key)`
-
-Gets an environment variable:
-
-```squ1d
-os.env("HOME")  # Returns your home directory
-```
-
-#### `os.exec(command)`
-
-Executes a system command:
-
-```squ1d
-os.exec("echo hello")  # Returns "hello"
-```
-
-#### `os.exit(status)`
-
-Exits the program
-
-```squ1d
-if (err) {
-    os.exit(1) # Exit status 1
-} el {
-    os.exit(0) # Exit status 0
-}
-```
-
-#### `time.sleep(seconds)`
-
-Pauses execution for the specified number of seconds:
-
-```squ1d
-time.sleep(1);  # Sleep for 1 second
-```
-
-#### `time.now()`
-
-Returns the current timestamp:
-
-```squ1d
-time.now()  # Returns current Unix timestamp
-```
-
-### Package Management
-
-#### `pkg.create(name, description)`
-
-Creates a new package:
-
-```squ1d
-pkg.create("mypackage", "A sample package");
-```
-
-#### `pkg.list()`
-
-Lists all available packages:
-
-```squ1d
-pkg.list()
-```
-
-#### `pkg.remove(name)`
-
-Removes a package:
-
-```squ1d
-pkg.remove("mypackage");
-```
-
-### Type Conversion
-
-#### `type.i2fl(integer)`
-
-Converts an integer to a float:
-
-```squ1d
-type.i2fl(42)  # Returns 42.0
-```
-
-#### `type.fl2i(float)`
-
-Converts a float to an integer:
-
-```squ1d
-type.fl2i(3.14)  # Returns 3
-```
-
-### Keyboard Events
-
-```squ1d
-keyboard.listen()
-```
-
-Constantly listens for keyboard events, often used in a `while` loop, returning a string value when a key is pressed, and returning `null` otherwise.
-
-```squ1d
-keyboard.read()
-```
-
-Reads for a single keyboard event, can be used outside of `while` loops, but holds up the process until a key is pressed, returning a string value when a key is pressed.
-
-```squ1d
-keyboard.stop()
-```
-
-Stops listening for keyboard events.
+- `keyboard.read`, `keyboard.listen`, `keyboard.stop`, `keyboard.on`, `keyboard.off`
 
 ## Operators
 
@@ -535,6 +380,8 @@ Stops listening for keyboard events.
 
 ```squ1d
 !   # Logical NOT
+and # Logical AND
+or  # Logical OR
 ```
 
 ### Assignment Operator
@@ -555,7 +402,7 @@ var greeting = "Hello" + " " + "World";
 var sumArray = def (arr) {
     var total = 0;
     var i = 0;
-    while (i < cat(arr)) {
+    while (i < array.cat(arr)) {
         total = total + arr[i];
         i = i + 1;
     }
@@ -564,7 +411,7 @@ var sumArray = def (arr) {
 
 var numbers = [1, 2, 3, 4, 5];
 var total = sumArray(numbers);
-io.write("Sum:", total);
+io.echo("Sum:", total);
 ```
 
 ### Hash Map Example
@@ -576,18 +423,18 @@ var student = {
     "active": true
 };
 
-io.write("Student:", student["name"]);
-io.write("Average grade: ", student["grades"][0]);
+io.echo("Student:", student["name"]);
+io.echo("Average grade: ", student["grades"][0]);
 ```
 
 ### Interactive Program
 
 ```squ1d
-io.write("Welcome to SQU1DLang Calculator!");
+io.echo("Welcome to SQU1DLang Calculator!");
 var num1 = io.read("Enter first number: ");
 var num2 = io.read("Enter second number: ");
 var sum = num1 + num2;
-io.write("The sum is: ", sum);
+io.echo("The sum is: ", sum);
 ```
 
 ### Keyboard event listener program
@@ -597,13 +444,13 @@ Example using keyboard.read():
 ```squ1d
 var key = keyboard.read()
 
-io.write(key + " pressed")
+io.echo(key + " pressed")
 ```
 
 Example using keyboard.listen():
 
 ```squ1d
-io.write("Press a key to start...")
+io.echo("Press a key to start...")
 var key = null
 
 while (true) {
@@ -621,7 +468,7 @@ while (true) {
 }
 
 suppress keyboard.stop()
-io.write("Exiting...")
+io.echo("Exiting...")
 os.exit(0)
 ```
 
@@ -657,7 +504,7 @@ SQU1DLang is implemented as a complete compiler called Squ1d++ with the followin
 To start an interactive session where you can type SQU1DLang code and see the results immediately:
 
 ```bash
-squ1d++
+squ1dcc
 ```
 
 ### Running Files
@@ -665,7 +512,7 @@ squ1d++
 To execute a SQU1DLang file:
 
 ```bash
-squ1d++ filename.sqd
+squ1dcc filename.sqd
 ```
 
 ### Compiling to Executable
@@ -673,10 +520,11 @@ squ1d++ filename.sqd
 To compile a SQU1DLang file to a standalone executable:
 
 ```bash
-squ1d++ -B input.sqd -o output
+squ1dcc -B input.sqd -o output
 ```
 
 This creates a standalone executable that doesn't require Go to run.
+The produced binary embeds the runtime of the `squ1dcc` binary used during build.
 
 ### Package Management
 
@@ -715,7 +563,7 @@ var result = math.add(5, 10);
 var maxVal = math.max([1, 5, 3, 9]);
 ```
 
-This is the recommended way to structure modular code. All functions defined in the included file will be accessible through the namespace using dot notation.
+This is the recommended way to structure modular code. Top-level functions in the included file (both `var fn = def(...)` and `fn >> (...)`) are exported through the namespace via dot notation.
 
 **Example library file (`lib/math_utils.sqd`):**
 
@@ -724,7 +572,7 @@ var add = def(a, b) { a + b };
 var max = def(arr) { 
     var m = arr[0];
     var i = 1;
-    while (i < len(arr)) {
+    while (i < array.cat(arr)) {
         if (arr[i] > m) { m = arr[i]; };
         i = i + 1;
     };
@@ -732,8 +580,12 @@ var max = def(arr) {
 };
 ```
 
-The include system searches in the current directory, `./lib/` directory, and user's package cache.
+For `pkg.include(path, namespace)`, include resolution checks the provided path, then paths relative to the caller (including caller `lib/`), then `./lib/`.
+
+### Runtime Note for Included Functions
+
+Namespace imports from `pkg.include(path, namespace)` currently use the evaluator compatibility path for imported function bodies. Most language features work as expected, but advanced control-flow behavior can differ from fully compiled top-level code in some edge cases.
 
 ---
 
-_SQU1D++ SQU1DLang Compiler, version 1, written by Quan Thai._
+_SQU1D++ SQU1DLang Compiler, version 1.7.0, written by Quan Thai._

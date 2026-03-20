@@ -418,7 +418,7 @@ var Builtins = []struct {
 			copy(newElements, arr.Elements)
 			newElements[length] = args[1]
 
-			return &Array{Elements: newElements}
+			return NewArray(newElements)
 		}, "array"),
 	},
 	{
@@ -1278,8 +1278,9 @@ var Builtins = []struct {
 				return newError("Index %d is out of range (array length is %d)", index, len(array.Elements))
 			}
 
-			array.Elements = append(array.Elements[:index], array.Elements[index+1:]...)
-			return array
+			newElements := make([]Object, len(array.Elements)-1)
+			copy(newElements, append(array.Elements[:index], array.Elements[index+1:]...))
+			return NewArray(newElements)
 		}, "array"),
 	},
 	{

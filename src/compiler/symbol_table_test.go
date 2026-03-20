@@ -99,6 +99,31 @@ func TestDefineAndResolveFunctionName(t *testing.T) {
 	}
 }
 
+func TestDefineReusesExistingVariableInSameScope(t *testing.T) {
+	global := NewSymbolTable()
+
+	a1 := global.Define("a")
+	a2 := global.Define("a")
+
+	if a1 != a2 {
+		t.Fatalf("expected same global symbol on redeclare, got %+v and %+v", a1, a2)
+	}
+	if global.numDefinitions != 1 {
+		t.Fatalf("expected one global definition, got %d", global.numDefinitions)
+	}
+
+	local := NewEnclosedSymbolTable(global)
+	l1 := local.Define("x")
+	l2 := local.Define("x")
+
+	if l1 != l2 {
+		t.Fatalf("expected same local symbol on redeclare, got %+v and %+v", l1, l2)
+	}
+	if local.numDefinitions != 1 {
+		t.Fatalf("expected one local definition, got %d", local.numDefinitions)
+	}
+}
+
 func TestResolveGlobal(t *testing.T) {
 	global := NewSymbolTable()
 	global.Define("a")

@@ -76,17 +76,33 @@ func needsContinuation(line string) bool {
 func Start(in io.Reader, out io.Writer) {
 	// Ensure builtins write to the REPL output writer so tests can capture prints.
 	object.OutWriter = out
-	env := object.NewEnvironment()
 	_, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
+
+	// REPL state for migration to compiler/VM with include fallback via evaluator
 	scanner := bufio.NewScanner(in)
 
 	classes := object.CreateClassObjects()
+	globals := make([]object.Object, vm.GlobalsSize)
+	symbolTable := compiler.NewSymbolTable()
+	env := object.NewEnvironment()
+
 	for name, obj := range classes {
 		env.Set(name, obj)
 	}
+
+	// Register builtins and classes in compiler symbol table and globals
+	for i, v := range object.Builtins {
+		symbolTable.DefineBuiltin(i, v.Name)
+	}
+	for name, obj := range classes {
+		sym := symbolTable.Define(name)
+		globals[sym.Index] = obj
+	}
+
+	constants := []object.Object{}
 
 	for {
 		fmt.Fprintf(out, PROMPT)
@@ -114,12 +130,23 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
-		evaluated := evaluator.Eval(program, env)
-		if evaluated != nil {
-			if evaluated.Type() != object.NULL_OBJ {
-				io.WriteString(out, evaluated.Inspect())
-				io.WriteString(out, "\n")
-			}
+		compiled := compiler.NewWithState(symbolTable, constants)
+		if err := compiled.Compile(program); err != nil {
+			io.WriteString(out, "Compilation error: "+err.Error()+"\n")
+			continue
+		}
+
+		bytecode := compiled.Bytecode()
+		constants = bytecode.Constants
+
+		machine := vm.NewWithGlobalsStore(bytecode, globals)
+		if err := machine.Run(); err != nil {
+			io.WriteString(out, "Runtime error: "+err.Error()+"\n")
+			continue
+		}
+
+		if last := machine.LastPoppedStackElem(); last != nil && last.Type() != object.NULL_OBJ {
+			io.WriteString(out, last.Inspect()+"\n")
 		}
 	}
 }
@@ -299,15 +326,20 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return err
 			}
 
-			// Check if the result is an IncludeDirective
+			// Process all include directives produced by this statement in-order.
+			for _, directive := range machine.DrainIncludeDirectives() {
+				if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
+					fmt.Fprintf(out, "Include error: %v\n", err)
+					return err
+				}
+			}
+
+			// Print normal statement result if any (include directives are side effects).
 			if last := machine.LastPoppedStackElem(); last != nil {
-				if directive, ok := last.(*object.IncludeDirective); ok {
-					// Handle the inclusion by parsing and executing the file
-					if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
-						fmt.Fprintf(out, "Include error: %v\n", err)
-						return err
-					}
-				} else if last.Type() != object.NULL_OBJ {
+				if _, ok := last.(*object.IncludeDirective); ok {
+					continue
+				}
+				if last.Type() != object.NULL_OBJ {
 					io.WriteString(out, last.Inspect()+"\n")
 				}
 			}
@@ -352,7 +384,19 @@ func ExecuteFile(filename string, out io.Writer) error {
 			io.WriteString(out, err.Error()+"\n")
 			return err
 		}
+
+		// Process include directives emitted by the final statement too.
+		for _, directive := range machine.DrainIncludeDirectives() {
+			if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
+				fmt.Fprintf(out, "Include error: %v\n", err)
+				return err
+			}
+		}
+
 		if last := machine.LastPoppedStackElem(); last != nil {
+			if _, ok := last.(*object.IncludeDirective); ok {
+				return nil
+			}
 			if last.Type() != object.NULL_OBJ {
 				io.WriteString(out, last.Inspect()+"\n")
 			}

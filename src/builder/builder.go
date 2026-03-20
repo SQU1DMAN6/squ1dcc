@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"squ1d++/ast"
 	"squ1d++/bytecode"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
@@ -254,10 +254,17 @@ func expandIncludes(code string, baseDir string) (string, error) {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Check for pkg.include() calls
+		// Check for include() or pkg.include() calls
+		includeCall := ""
 		if strings.Contains(trimmed, "pkg.include(") {
+			includeCall = "pkg.include("
+		} else if strings.Contains(trimmed, "include(") {
+			includeCall = "include("
+		}
+
+		if includeCall != "" {
 			// Extract filename from include
-			// Simple parser for pkg.include("filename") or pkg.include("filename", "namespace")
+			// Simple parser for include("filename") or include("filename", "namespace")
 			startIdx := strings.Index(trimmed, `"`)
 			if startIdx == -1 {
 				result = append(result, line)
@@ -393,22 +400,31 @@ func findLibrary(libPath string, baseDir string) string {
 	return ""
 }
 
-// findTopLevelVars returns a list of top-level variable names declared in the
-// provided SQU1D++ source. It looks for lines like `var name =`.
+// findTopLevelVars returns names introduced by top-level let/function-definition
+// statements in the provided source. This correctly handles shorthand function
+// syntax like `name >> (...) { ... }`, which the parser lowers to LetStatement.
 func findTopLevelVars(src string) []string {
-	re := regexp.MustCompile(`(?m)^\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s*=`)
-	matches := re.FindAllStringSubmatch(src, -1)
-	names := make([]string, 0, len(matches))
+	l := lexer.New(src)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	names := []string{}
 	seen := make(map[string]bool)
-	for _, m := range matches {
-		if len(m) < 2 {
+
+	for _, stmt := range program.Statements {
+		ls, ok := stmt.(*ast.LetStatement)
+		if !ok || ls.Name == nil {
 			continue
 		}
-		name := m[1]
-		if !seen[name] {
-			names = append(names, name)
-			seen[name] = true
+
+		name := ls.Name.Value
+		if name == "" || seen[name] {
+			continue
 		}
+
+		names = append(names, name)
+		seen[name] = true
 	}
+
 	return names
 }

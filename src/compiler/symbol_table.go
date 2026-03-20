@@ -36,6 +36,20 @@ func NewEnclosedSymbolTable(outer *SymbolTable) *SymbolTable {
 }
 
 func (s *SymbolTable) Define(name string) Symbol {
+	// Redeclaring a variable in the same scope should reuse the same slot.
+	// This keeps branch-local `var x = ...` declarations aligned when both
+	// branches are in the same compilation scope (e.g. top-level if/elif).
+	// We intentionally only reuse existing GLOBAL/LOCAL symbols here so
+	// builtins and function names can still be shadowed by `var`.
+	if existing, ok := s.store[name]; ok {
+		if s.Outer == nil && existing.Scope == GlobalScope {
+			return existing
+		}
+		if s.Outer != nil && existing.Scope == LocalScope {
+			return existing
+		}
+	}
+
 	symbol := Symbol{Name: name, Index: s.numDefinitions}
 	if s.Outer == nil {
 		symbol.Scope = GlobalScope

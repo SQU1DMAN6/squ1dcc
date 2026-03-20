@@ -24,19 +24,23 @@ var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
 
 type VM struct {
-	constants   []object.Object
-	stack       []object.Object
-	sp          int
-	globals     []object.Object
-	frames      []*Frame
-	framesIndex int
-	lastOpcode  code.Opcode
-	lastPopped  object.Object
+	constants        []object.Object
+	stack            []object.Object
+	sp               int
+	globals          []object.Object
+	frames           []*Frame
+	framesIndex      int
+	lastOpcode       code.Opcode
+	lastPopped       object.Object
+	instructionCount int
 	// lastPopWasAssignment is true when the last popped value was popped
 	// as part of an assignment (OpSetGlobal/OpSetLocal). This allows
 	// LastPoppedStackElem to suppress printing assignment results even
 	// if subsequent opcodes changed lastOpcode (e.g., OpJump).
 	lastPopWasAssignment bool
+	// includeDirectives records every IncludeDirective popped during execution
+	// so callers can process all pkg.include() side effects in-order.
+	includeDirectives []*object.IncludeDirective
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -70,6 +74,11 @@ func (vm *VM) Run() error {
 	var op code.Opcode
 
 	for vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
+		vm.instructionCount++
+		if vm.instructionCount > object.SysMaxInstructionCount {
+			return fmt.Errorf("runtime error: max instruction count exceeded: %d", object.SysMaxInstructionCount)
+		}
+
 		vm.currentFrame().ip++
 
 		ip = vm.currentFrame().ip
@@ -627,7 +636,7 @@ func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 		elements[i-startIndex] = vm.stack[i]
 	}
 
-	return &object.Array{Elements: elements}
+	return object.NewArray(elements)
 }
 
 func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
@@ -645,7 +654,7 @@ func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
 		hashedPairs[hashKey.HashKey()] = pair
 	}
 
-	return &object.Hash{Pairs: hashedPairs}, nil
+	return object.NewHash(hashedPairs), nil
 }
 
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
@@ -890,6 +899,11 @@ func (vm *VM) pop() object.Object {
 	vm.sp--
 	// Record the last popped element for inspection by the REPL/test harness.
 	vm.lastPopped = o
+	// Track include directives regardless of where they were popped so file
+	// execution can process all pkg.include() calls in a statement.
+	if directive, ok := o.(*object.IncludeDirective); ok {
+		vm.includeDirectives = append(vm.includeDirectives, directive)
+	}
 	// Any explicit pop indicates the last popped value is not an assignment
 	// unless the caller sets `lastPopWasAssignment` afterward (e.g., OpSetGlobal).
 	vm.lastPopWasAssignment = false
@@ -922,6 +936,17 @@ func (vm *VM) LastPoppedStackElem() object.Object {
 	// Return the last popped value recorded by pop(). If nothing has been
 	// popped, or printing is suppressed for the last opcode, return nil.
 	return vm.lastPopped
+}
+
+// DrainIncludeDirectives returns all include directives popped so far and
+// clears the internal queue.
+func (vm *VM) DrainIncludeDirectives() []*object.IncludeDirective {
+	if len(vm.includeDirectives) == 0 {
+		return nil
+	}
+	directives := vm.includeDirectives
+	vm.includeDirectives = nil
+	return directives
 }
 
 func (vm *VM) currentFrame() *Frame {

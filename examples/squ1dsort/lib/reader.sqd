@@ -1,0 +1,71 @@
+getInput1 >> () {
+    var input = io.read("Pick mode (1=default, 2=manual, 3=auto): ")
+
+    if (type.tp(input) != "Integer" or (input != 1 and input != 2 and input != 3)) {
+        getInput1()
+    } el {
+        return input
+    }
+}
+
+getInput2 >> () {
+    var numElements = io.read("How many elements to sort? ")
+    if (type.tp(numElements) != "Integer") {
+        getInput2()
+    }
+
+    var i = 0
+    var arrayToSort = []
+    while (i < numElements) {
+        io.echo(io.write("Enter element", i+1) + ": ")
+        var elementI = io.read()
+        if (type.tp(elementI) == "Integer" and elementI != "") {
+            arrayToSort = array.append(arrayToSort, elementI)
+            io.echo("Current array:", arrayToSort, "\n")
+            i = i+1
+        }
+    }
+
+    return arrayToSort
+}
+
+getInput3 >> () {
+    var raw = io.read("Enter elements to sort, separated by commas: ")
+    if (type.tp(raw) != "String") {
+        raw = type.d2s(raw)
+    }
+
+    var rawArray = string.sepr(raw, ",")
+    var arrayOfInt = []
+    var i = 0
+
+    while (i < array.cat(rawArray)) {
+        unblock var elementI = type.s2i(string.trim(rawArray[i]))
+        if (type.tp(elementI) == "Integer") {
+            arrayOfInt = array.append(arrayOfInt, elementI)
+        } el {
+            io.echo("Skipping element '" + rawArray[i] + "'", "\n")
+        }
+        i = i+1
+    }
+
+    return arrayOfInt
+}
+
+getInput4 >> () {
+    var arrayToSort = []
+    while (true) {
+        var inputRaw = io.read("Type new element, hit Enter to start sorting: ")
+        if (type.tp(inputRaw) == "Integer") {
+            arrayToSort = array.append(arrayToSort, inputRaw)
+            io.echo("Current array:", arrayToSort, "\n")
+        } elif (inputRaw == "") {
+            return arrayToSort
+        } el {
+            io.echo("Skipping element", inputRaw, "\n")
+            io.echo("Current array:", arrayToSort, "\n")
+        }
+    }
+
+    return arrayToSort
+}

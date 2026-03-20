@@ -17,15 +17,15 @@ Turn SQU1DLang into a full compiler with standalone deployment, strong control-f
 - [x] Ensure generated executable runs standalone after relocation.
 
 ## Task 3: Full compiler mode
-- [ ] Remove interpreter-only paths where possible (REPL vs compile mode separation).
-- [ ] Confirm `main -B` path never drops to REPL.
+- [x] Remove interpreter-only paths where possible (REPL vs compile mode separation).
+- [x] Confirm `main -B` path never drops to REPL.
 
 ## Task 4: Fix control flow and io.write behavior
-- [ ] Add tests for `for`/`while` with `io.write` and true/false behavior.
-- [ ] Fix boolean evaluation at bytecode/VM level.
+- [x] Add tests for `for`/`while` with `io.write` and true/false behavior.
+- [x] Fix boolean evaluation at bytecode/VM level.
 
 ## Task 5: New error handling package `<<`
-- [ ] Implement runtime support for `<<` error pipe semantics.
+- [x] Implement runtime support for `<<` error pipe semantics.
 - [ ] Document in language docs.
 
 ## Task 6: HTTP/HTTPS support
@@ -33,11 +33,11 @@ Turn SQU1DLang into a full compiler with standalone deployment, strong control-f
 - [ ] Pattern match Gochi’s API.
 
 ## Task 7: New function definition syntax
-- [ ] Add parsing for `var fn = >> () {...}` and `fn >> () {...}`.
-- [ ] Wire compiler/VM behavior.
+- [x] Add parsing for `var fn = >> () {...}` and `fn >> () {...}`.
+- [x] Wire compiler/VM behavior.
 
 ## Task 8: Memory management improvements
-- [ ] Add object pooling / arena to VM.
+- [x] Add object pooling / arena to VM.
 - [ ] Evaluate performance compared to C++/Rust motivations.
 
 ## Validation

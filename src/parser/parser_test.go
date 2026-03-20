@@ -662,6 +662,43 @@ func TestParsingHashLiteralsStringKeys(t *testing.T) {
 	}
 }
 
+func TestParsingHashLiteralsUnquotedKeys(t *testing.T) {
+	input := `{sort: 1, foo: "bar"}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	stmt := program.Statements[0].(*ast.ExpressionStatement)
+	hash, ok := stmt.Expression.(*ast.HashLiteral)
+	if !ok {
+		t.Fatalf("exp is not ast.HashLiteral. Got %T", stmt.Expression)
+	}
+	if len(hash.Pairs) != 2 {
+		t.Errorf("hash.Pairs has wrong length. Got %d", len(hash.Pairs))
+	}
+
+	for key, value := range hash.Pairs {
+		literal, ok := key.(*ast.StringLiteral)
+		if !ok {
+			t.Errorf("Key is not ast.StringLiteral. Got %T", key)
+			continue
+		}
+
+		if literal.Value == "sort" {
+			testIntegerLiteral(t, value, 1)
+		} else if literal.Value == "foo" {
+			str, ok := value.(*ast.StringLiteral)
+			if !ok {
+				t.Errorf("value for foo is not ast.StringLiteral. Got %T", value)
+			} else if str.Value != "bar" {
+				t.Errorf("value for foo wrong. got %s", str.Value)
+			}
+		} else {
+			t.Errorf("unexpected key %s", literal.Value)
+		}
+	}
+}
+
 func TestParsingEmptyHashLiteral(t *testing.T) {
 	input := "{}"
 	l := lexer.New(input)

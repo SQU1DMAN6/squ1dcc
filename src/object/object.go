@@ -7,7 +7,19 @@ import (
 	"squ1d++/ast"
 	"squ1d++/code"
 	"strings"
+	"sync"
 )
+
+// Tunable runtime limits. Users can override these by adjusting these globals
+// before executing long-running programs.
+var (
+	SysMaxStackSize        = 65536
+	SysMaxLoopIterations   = 1000000
+	SysMaxInstructionCount = 10000000
+)
+
+var arrayPool = sync.Pool{New: func() interface{} { return &Array{} }}
+var hashPool = sync.Pool{New: func() interface{} { return &Hash{Pairs: make(map[HashKey]HashPair)} }}
 
 type BuiltinFunction func(args ...Object) Object
 
@@ -208,8 +220,52 @@ func (h *Hash) Inspect() string {
 	return out.String()
 }
 
-// System-level configuration (modifiable via builtins in the `sys` class)
-var SysMaxStackSize = 65536
+func NewArray(elements []Object) *Array {
+	a := arrayPool.Get().(*Array)
+	if cap(a.Elements) >= len(elements) {
+		a.Elements = a.Elements[:len(elements)]
+		copy(a.Elements, elements)
+	} else {
+		a.Elements = make([]Object, len(elements))
+		copy(a.Elements, elements)
+	}
+	return a
+}
+
+func ReleaseArray(a *Array) {
+	if a == nil {
+		return
+	}
+	for i := range a.Elements {
+		a.Elements[i] = nil
+	}
+	a.Elements = nil
+	arrayPool.Put(a)
+}
+
+func NewHash(pairs map[HashKey]HashPair) *Hash {
+	h := hashPool.Get().(*Hash)
+	if h.Pairs == nil {
+		h.Pairs = make(map[HashKey]HashPair)
+	}
+	for k := range h.Pairs {
+		delete(h.Pairs, k)
+	}
+	for k, v := range pairs {
+		h.Pairs[k] = v
+	}
+	return h
+}
+
+func ReleaseHash(h *Hash) {
+	if h == nil || h.Pairs == nil {
+		return
+	}
+	for k := range h.Pairs {
+		delete(h.Pairs, k)
+	}
+	hashPool.Put(h)
+}
 
 type CompiledFunction struct {
 	Instructions  code.Instructions

@@ -366,6 +366,10 @@ func evalInfixExpression(
 		return evalLogicalAndExpression(left, right)
 	case operator == "aut":
 		return evalLogicalOrExpression(left, right)
+	case operator == "and":
+		return evalLogicalAndExpression(left, right)
+	case operator == "or":
+		return evalLogicalOrExpression(left, right)
 	case left.Type() != right.Type():
 		return newError("Type mismatch: %s %s %s",
 			left.Type(), operator, right.Type())
@@ -516,7 +520,11 @@ func evalIfExpression(
 }
 
 func evalWhileLoop(condition ast.Expression, body *ast.BlockStatement, env *object.Environment) object.Object {
-	for {
+	for iteration := 0; ; iteration++ {
+		if iteration > object.SysMaxLoopIterations {
+			return newError("Exceeded maximum loop iterations (%d). Possible infinite loop", object.SysMaxLoopIterations)
+		}
+
 		cond := Eval(condition, env)
 		if isError(cond) {
 			return cond

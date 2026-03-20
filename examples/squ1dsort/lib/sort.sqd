@@ -1,8 +1,7 @@
-var sort = def(arr) {
-    var sorteddata = []
+sort >> (arr) {
+    var sortedData = []
 
     while (array.cat(arr) > 0) {
-
         var smallest = arr[0]
         var smallestIndex = 0
         var i = 0
@@ -12,12 +11,12 @@ var sort = def(arr) {
                 smallest = arr[i]
                 smallestIndex = i
             }
-            i = i + 1
+            i = i+1
         }
 
-        sorteddata = array.append(sorteddata, smallest)
+        sortedData = array.append(sortedData, smallest)
         arr = array.remove(arr, smallestIndex)
     }
 
-    return sorteddata
+    return sortedData
 }

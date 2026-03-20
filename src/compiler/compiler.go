@@ -366,10 +366,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
-		}
-
 		// Jump back to the beginning of the loop
 		c.emit(code.OpJump, loopStart)
 
@@ -397,11 +393,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 		err = c.Compile(node.Body)
 		if err != nil {
 			return err
-		}
-
-		// Pop the result of the body if it exists
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
 		}
 
 		// Jump back to the beginning of the loop
@@ -568,10 +559,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 		err := c.Compile(node.Body)
 		if err != nil {
 			return err
-		}
-
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
 		}
 
 		// Compile update expression

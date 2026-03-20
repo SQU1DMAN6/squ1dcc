@@ -1,0 +1,24 @@
+if (os.iRuntime("os") == "windows") {
+    pkg.include("lib\\sort.sqd", "sort")
+    pkg.include("lib\\reader.sqd", "reader")
+} el {
+    pkg.include("lib/sort.sqd", "sort")
+    pkg.include("lib/reader.sqd", "reader")
+}
+
+var input = reader.getInput1()
+
+if (input == 1) {
+    io.echo("Selected mode: default\n")
+    var arrayToSort = reader.getInput2()
+} elif (input == 2) {
+    io.echo("Selected mode: manual\n")
+    var arrayToSort = reader.getInput3()
+} el {
+    io.echo("Selected mode: auto\n")
+    var arrayToSort = reader.getInput4()
+}
+
+var sortedArray = sort.sort(arrayToSort)
+io.echo("Sorted array:", sortedArray, "\n")
+io.echo("See you later.\n")

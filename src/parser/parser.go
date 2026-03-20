@@ -588,6 +588,9 @@ func (p *Parser) parseHashLiteral() ast.Expression {
 	for !p.peekTokenIs(token.RBRACE) {
 		p.nextToken()
 		key := p.parseExpression(LOWEST)
+		if ident, ok := key.(*ast.Identifier); ok {
+			key = &ast.StringLiteral{Token: ident.Token, Value: ident.Value}
+		}
 		if !p.expectPeek(token.COLON) {
 			return nil
 		}
