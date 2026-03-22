@@ -8,10 +8,10 @@ io.write("This aims to showcase the capabilities of SQX Plugins in SQU1DLang app
 hello.execute()
 hello.bool(true)
 var sumResult = hello.add(3, 5)
-io.echo("3 + 5 = ", sumResult, "\n")
+io.echo("3 + 5 =", sumResult, "\n")
 
 var arrayResult = hello.sumArray([2, 4, 6])
-io.echo("[2, 4, 6] sum = ", arrayResult, "\n")
+io.echo("[2, 4, 6] sum =", arrayResult, "\n")
 
 var keyCount = hello.countKeys({name: "SQU1D", major: 2, stable: true})
-io.echo("Object key count = ", keyCount, "\n")
+io.echo("Object key count =", keyCount, "\n")
