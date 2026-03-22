@@ -582,6 +582,66 @@ var max = def(arr) {
 
 For `pkg.include(path, namespace)`, include resolution checks the provided path, then paths relative to the caller (including caller `lib/`), then `./lib/`.
 
+### SQX Plugins (Extensions)
+
+You can also include `.sqx` plugin manifests with the same namespace form:
+
+```squ1d
+pkg.include("lib/tooling.sqx", "tooling");
+var sum = tooling.sumTwo(2, 3);
+```
+
+An `.sqx` module is executed as an external native module. The runtime asks it for
+its exported functions, then calls those functions via a small CLI protocol.
+
+When a module is loaded, SQU1D++ runs:
+- `<module>.sqx __sqx_manifest__`
+
+The module must print a JSON manifest like:
+
+```json
+{
+  "version": 1,
+  "functions": {
+    "sumTwo": {
+      "return": "int"
+    }
+  }
+}
+```
+
+When a function is called, SQU1D++ runs:
+- `<module>.sqx __sqx_call__ <functionName> <arg1> <arg2> ...`
+
+The module writes the result to stdout.
+
+Supported function fields:
+- `return`: output parsing mode (`auto`, `string`, `raw`, `int`, `float`, `bool`, `null`, `json`).
+
+Backward compatibility:
+- JSON command manifests are still supported (`exec`, `append_args`, `env`), but the preferred model is a native executable `.sqx` module.
+
+Binary-only SQX workflow (no SQU1DCC source required):
+
+```bash
+# Generate a standalone SQX template
+squ1dcc sqx init --lang go --name myplugin --out ./myplugin
+
+# Build it into native machine code (.sqx executable)
+squ1dcc sqx build --lang go --src ./myplugin --out ./myplugin.sqx
+
+# Alias command:
+squ1dcc sqx compile --lang go --src ./myplugin --out ./myplugin.sqx
+```
+
+The generated Go template includes a local SQX runtime helper file, so plugin
+authors do not need to import `squ1d++/...` packages.
+
+`sqx init` supports: `go`, `c`, `cpp`, `shell`.
+`sqx build` supports: `go`, `c`, `cpp`, `shell`.
+
+For standalone builds, namespaced `.sqx` includes are rewritten to `pkg.load_sqx("<absolute-path>")` during include expansion.
+
 ### Runtime Note for Included Functions
 
 Namespace imports from `pkg.include(path, namespace)` currently use the evaluator compatibility path for imported function bodies. Most language features work as expected, but advanced control-flow behavior can differ from fully compiled top-level code in some edge cases.

@@ -62,7 +62,7 @@ getInput4 >> () {
         } elif (inputRaw == "") {
             return arrayToSort
         } el {
-            io.echo("Skipping element", inputRaw, "\n")
+            io.echo("Skipping element '" + inputRaw + "'\n")
             io.echo("Current array:", arrayToSort, "\n")
         }
     }

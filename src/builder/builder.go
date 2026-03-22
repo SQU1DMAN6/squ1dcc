@@ -300,17 +300,6 @@ func expandIncludes(code string, baseDir string) (string, error) {
 				continue
 			}
 
-			// Read and recursively expand the included file
-			includedCode, err := os.ReadFile(found)
-			if err != nil {
-				return "", fmt.Errorf("could not read include file %s: %v", found, err)
-			}
-
-			expandedInclude, err := expandIncludes(string(includedCode), filepath.Dir(found))
-			if err != nil {
-				return "", fmt.Errorf("error expanding include %s: %v", found, err)
-			}
-
 			// Check if a namespace was provided in the include call
 			// Look for a second string argument after the filename
 			rest := trimmed[startIdx+1+endIdx+1:]
@@ -320,6 +309,34 @@ func expandIncludes(code string, baseDir string) (string, error) {
 				if idx2 != -1 {
 					ns = rest[idx+1 : idx+1+idx2]
 				}
+			}
+
+			// SQX plugins are not SQU1DLang source files, so they can't be inlined.
+			if strings.EqualFold(filepath.Ext(found), ".sqx") {
+				if ns == "" {
+					// Keep one-arg form untouched (returns raw content semantics).
+					result = append(result, line)
+					continue
+				}
+
+				// For non-registered SQX files, use legacy pkg.load_sqx path inlining.
+				absPath, err := filepath.Abs(found)
+				if err != nil {
+					return "", fmt.Errorf("could not resolve SQX path %s: %v", found, err)
+				}
+				result = append(result, fmt.Sprintf("var %s = pkg.load_sqx(%q)", ns, filepath.ToSlash(absPath)))
+				continue
+			}
+
+			// Read and recursively expand the included file
+			includedCode, err := os.ReadFile(found)
+			if err != nil {
+				return "", fmt.Errorf("could not read include file %s: %v", found, err)
+			}
+
+			expandedInclude, err := expandIncludes(string(includedCode), filepath.Dir(found))
+			if err != nil {
+				return "", fmt.Errorf("error expanding include %s: %v", found, err)
 			}
 
 			if ns == "" {

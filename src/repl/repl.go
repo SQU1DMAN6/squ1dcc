@@ -433,6 +433,22 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 		return fmt.Errorf("Failed to read include file '%s': file not found", directive.Filename)
 	}
 
+	// SQX plugins are JSON manifests for external command-backed functions.
+	// Load them directly into a namespace hash without evaluator parsing.
+	if strings.EqualFold(filepath.Ext(chosen), ".sqx") {
+		nsHash, err := object.LoadSQXNamespace(chosen)
+		if err != nil {
+			return fmt.Errorf("SQX load error in '%s': %v", directive.Filename, err)
+		}
+
+		ns := symbolTable.Define(directive.Namespace)
+		if ns.Index < len(globals) {
+			globals[ns.Index] = nsHash
+		}
+		object.RegisterNamespace(directive.Namespace, nsHash)
+		return nil
+	}
+
 	content, err = os.ReadFile(chosen)
 	if err != nil {
 		return fmt.Errorf("Failed to read include file '%s': %v", chosen, err)

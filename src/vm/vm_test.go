@@ -3,11 +3,14 @@ package vm
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"squ1d++/ast"
 	"squ1d++/compiler"
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -117,6 +120,27 @@ func TestIndexExpressions(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestWhileBreakContinue(t *testing.T) {
+	_, val := runVmTestWithOutput(t, `
+		var i = 0;
+		while (true) {
+			i = i + 1;
+			if (i == 2) { continue }
+			if (i == 5) { break }
+			i = i + 1;
+		}
+		i
+	`)
+
+	got, ok := val.(*object.Integer)
+	if !ok {
+		t.Fatalf("Expected integer, got %T", val)
+	}
+	if got.Value != 5 {
+		t.Fatalf("Expected 5 after break/continue loop, got %d", got.Value)
+	}
+}
+
 func TestInfiniteLoopLimit(t *testing.T) {
 	input := "while (true) { }"
 	program := parse(input)
@@ -134,6 +158,120 @@ func TestInfiniteLoopLimit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "max instruction count exceeded") {
 		t.Fatalf("Expected max instruction count error, got: %s", err)
+	}
+}
+
+func TestSQXPluginLoadAndCallInVM(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "tooling_plugin.sh")
+	script := `#!/usr/bin/env bash
+mode="$1"
+shift
+case "$mode" in
+  imported) printf "123" ;;
+  greet) printf "Hello %s" "$1" ;;
+  sum) printf "%s" "$(($1 + $2))" ;;
+  stats) printf '{"count": %s, "first": "%s"}' "$#" "$1" ;;
+  *) echo "unknown mode: $mode" >&2; exit 2 ;;
+esac
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("could not write plugin script: %v", err)
+	}
+
+	manifestPath := filepath.Join(tmpDir, "tooling.sqx")
+	manifest := `{
+  "version": 1,
+  "functions": {
+    "importedFunction": { "exec": ["./tooling_plugin.sh", "imported"], "return": "int" },
+    "sendGreeting": { "exec": ["./tooling_plugin.sh", "greet"], "append_args": true, "return": "string" },
+    "sumTwo": { "exec": ["./tooling_plugin.sh", "sum"], "append_args": true, "return": "int" },
+    "stats": { "exec": ["./tooling_plugin.sh", "stats"], "append_args": true, "return": "json" }
+  }
+}`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("could not write sqx manifest: %v", err)
+	}
+
+	input := "var tooling = pkg.load_sqx(" + strconv.Quote(manifestPath) + "); " +
+		"[tooling.importedFunction(), tooling.sendGreeting(\"Sam\"), tooling.sumTwo(2, 5), tooling.stats(3, 9).count]"
+
+	program := parse(input)
+	comp := compiler.New()
+	if err := comp.Compile(program); err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	vm := New(comp.Bytecode())
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run error: %v", err)
+	}
+
+	arr, ok := vm.LastPoppedStackElem().(*object.Array)
+	if !ok {
+		t.Fatalf("expected array result, got %T (%v)", vm.LastPoppedStackElem(), vm.LastPoppedStackElem())
+	}
+	if len(arr.Elements) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(arr.Elements))
+	}
+
+	if err := testIntegerObject(123, arr.Elements[0]); err != nil {
+		t.Fatalf("importedFunction result mismatch: %v", err)
+	}
+	if err := testStringObject("Hello Sam", arr.Elements[1]); err != nil {
+		t.Fatalf("sendGreeting result mismatch: %v", err)
+	}
+	if err := testIntegerObject(7, arr.Elements[2]); err != nil {
+		t.Fatalf("sumTwo result mismatch: %v", err)
+	}
+	if err := testIntegerObject(2, arr.Elements[3]); err != nil {
+		t.Fatalf("stats.count result mismatch: %v", err)
+	}
+}
+
+func TestSQXExecutableModuleLoadAndCallInVM(t *testing.T) {
+	tmpDir := t.TempDir()
+	modulePath := filepath.Join(tmpDir, "tooling.sqx")
+	module := `#!/usr/bin/env bash
+set -euo pipefail
+cmd="${1:-}"
+case "$cmd" in
+  __sqx_manifest__)
+    printf '{"version":1,"functions":{"sumTwo":{"return":"int"}}}'
+    ;;
+  __sqx_call__)
+    fn="${2:-}"
+    shift 2 || true
+    case "$fn" in
+      sumTwo) printf "%s" "$(($1 + $2))" ;;
+      *) echo "unknown fn: $fn" >&2; exit 2 ;;
+    esac
+    ;;
+  *)
+    echo "unknown cmd: $cmd" >&2
+    exit 2
+    ;;
+esac
+`
+	if err := os.WriteFile(modulePath, []byte(module), 0o755); err != nil {
+		t.Fatalf("could not write sqx module: %v", err)
+	}
+
+	input := "var tooling = pkg.load_sqx(" + strconv.Quote(modulePath) + "); tooling.sumTwo(6, 8)"
+
+	program := parse(input)
+	comp := compiler.New()
+	if err := comp.Compile(program); err != nil {
+		t.Fatalf("compiler error: %v", err)
+	}
+
+	vm := New(comp.Bytecode())
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run error: %v", err)
+	}
+
+	if err := testIntegerObject(14, vm.LastPoppedStackElem()); err != nil {
+		t.Fatalf("result mismatch: %v", err)
 	}
 }
 

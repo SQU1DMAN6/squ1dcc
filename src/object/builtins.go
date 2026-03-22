@@ -984,6 +984,26 @@ var Builtins = []struct {
 		}, "pkg"),
 	},
 	{
+		"load_sqx",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			path, ok := args[0].(*String)
+			if !ok {
+				return newError("Argument 0 to `load_sqx` must be STRING, got %s", args[0].Type())
+			}
+
+			ns, err := LoadSQXNamespace(path.Value)
+			if err != nil {
+				return newError("Failed to load SQX plugin '%s': %v", path.Value, err)
+			}
+
+			return ns
+		}, "pkg"),
+	},
+	{
 		"create",
 		createBuiltin(func(args ...Object) Object {
 			if len(args) < 1 || len(args) > 2 {

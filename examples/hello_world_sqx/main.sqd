@@ -1,0 +1,9 @@
+if (os.iRuntime == "windows") {
+    pkg.include("lib\\hello_world.sqx", "hello")
+} el {
+    pkg.include("lib/hello_world.sqx", "hello")
+}
+
+hello.execute()
+var boolI = io.read("Select a boolean to return. Options: 'true' || 'false': ")
+hello.bool(boolI)

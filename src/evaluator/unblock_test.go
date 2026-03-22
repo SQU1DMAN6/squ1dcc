@@ -1,6 +1,8 @@
 package evaluator
 
 import (
+	"fmt"
+	"os"
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
@@ -70,5 +72,63 @@ func TestErrorPipeAssignsError(t *testing.T) {
 
 	if val.Type() != object.ERROR_OBJ {
 		t.Fatalf("expected y to be Error object, got %s", val.Type())
+	}
+}
+
+func TestPkgIncludeSqxPlugin(t *testing.T) {
+	// Create a temporary plugin file using .sqx extension
+	f, err := os.CreateTemp("", "plugin-*.sqx")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+
+	pluginSource := `#!/usr/bin/env bash
+set -euo pipefail
+command="${1:-}"
+case "$command" in
+  __sqx_manifest__)
+    printf '{"version":1,"functions":{"query":{"return":"auto"}}}'
+    ;;
+  __sqx_call__)
+    fn="${2:-}"
+    shift 2 || true
+    case "$fn" in
+      query) printf "1" ;;
+      *) echo "unknown fn: $fn" >&2; exit 2 ;;
+    esac
+    ;;
+  *)
+    echo "unknown command: $command" >&2
+    exit 2
+    ;;
+esac
+`
+	if _, err := f.WriteString(pluginSource); err != nil {
+		t.Fatalf("failed to write plugin file: %v", err)
+	}
+	f.Close()
+	if err := os.Chmod(f.Name(), 0o755); err != nil {
+		t.Fatalf("failed to chmod plugin file: %v", err)
+	}
+
+	input := fmt.Sprintf("pkg.include(\"%s\", \"sql\")\nsql.query(\"SELECT 1\")", f.Name())
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	env := object.NewEnvironment()
+	evaluated := Eval(program, env)
+
+	if evaluated == nil {
+		t.Fatalf("expected a result, got nil")
+	}
+
+	integer, ok := evaluated.(*object.Integer)
+	if !ok {
+		t.Fatalf("expected integer result from plugin call, got %T (%v)", evaluated, evaluated)
+	}
+	if integer.Value != 1 {
+		t.Fatalf("expected sql plugin query result 1, got %d", integer.Value)
 	}
 }

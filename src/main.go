@@ -13,6 +13,7 @@ import (
 	"squ1d++/compiler"
 	"squ1d++/object"
 	"squ1d++/repl"
+	"squ1d++/sqxdev"
 	"squ1d++/vm"
 	"strings"
 )
@@ -24,6 +25,14 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
 			os.Exit(1)
+		}
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "sqx" {
+		code := sqxdev.Run(os.Args[2:], os.Stdout, os.Stderr)
+		if code != 0 {
+			os.Exit(code)
 		}
 		return
 	}

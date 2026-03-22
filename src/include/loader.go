@@ -60,8 +60,8 @@ func (l *Loader) LoadFile(filename string, symbolTable *compiler.SymbolTable, co
 
 // resolvePath resolves a file path, checking search paths and extensions
 func (l *Loader) resolvePath(filename string) (string, error) {
-	// If it's an absolute path or already has .sqd extension, use as-is
-	if filepath.IsAbs(filename) || strings.HasSuffix(filename, ".sqd") {
+	// If it's an absolute path or already has .sqd/.sqx extension, use as-is
+	if filepath.IsAbs(filename) || strings.HasSuffix(filename, ".sqd") || strings.HasSuffix(filename, ".sqx") {
 		if _, err := os.Stat(filename); err == nil {
 			return filename, nil
 		}

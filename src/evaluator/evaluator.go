@@ -7,6 +7,7 @@ import (
 	"squ1d++/lexer"
 	"squ1d++/object"
 	"squ1d++/parser"
+	"strings"
 )
 
 var (
@@ -897,6 +898,18 @@ func evalPkgInclude(node *ast.CallExpression, env *object.Environment) object.Ob
 	namespace, ok := nsArg.(*object.String)
 	if !ok {
 		return newError("Second argument to pkg.include must be STRING, got %s", nsArg.Type())
+	}
+
+	// .sqx files are extension manifests (command-backed or Go-backed plugins).
+	// Load them directly and bind them to the requested namespace.
+	if strings.HasSuffix(strings.ToLower(filename.Value), ".sqx") {
+		pluginHash, err := object.LoadSQXNamespace(filename.Value)
+		if err != nil {
+			return newError("Failed to load SQX plugin '%s': %v", filename.Value, err)
+		}
+		env.Set(namespace.Value, pluginHash)
+		object.RegisterNamespace(namespace.Value, pluginHash)
+		return &object.Null{}
 	}
 
 	// Read the file
