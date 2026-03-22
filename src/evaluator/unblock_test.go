@@ -132,3 +132,59 @@ esac
 		t.Fatalf("expected sql plugin query result 1, got %d", integer.Value)
 	}
 }
+
+func TestPkgIncludeSqxPluginTypedAdd(t *testing.T) {
+	f, err := os.CreateTemp("", "plugin-*.sqx")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+
+	pluginSource := `#!/usr/bin/env bash
+set -euo pipefail
+command="${1:-}"
+case "$command" in
+  __sqx_manifest__)
+    printf '{"version":1,"functions":{"add":{"return":"int"}}}'
+    ;;
+  __sqx_call__)
+    fn="${2:-}"
+    shift 2 || true
+    case "$fn" in
+      add)
+        printf "%s" "$(($1 + $2))"
+        ;;
+      *) echo "unknown fn: $fn" >&2; exit 2 ;;
+    esac
+    ;;
+  *) echo "unknown command: $command" >&2; exit 2 ;;
+esac
+`
+	if _, err := f.WriteString(pluginSource); err != nil {
+		t.Fatalf("failed to write plugin file: %v", err)
+	}
+	f.Close()
+	if err := os.Chmod(f.Name(), 0o755); err != nil {
+		t.Fatalf("failed to chmod plugin file: %v", err)
+	}
+
+	input := fmt.Sprintf("pkg.include(\"%s\", \"sql\")\nsql.add(3, 5)", f.Name())
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	env := object.NewEnvironment()
+	evaluated := Eval(program, env)
+
+	if evaluated == nil {
+		t.Fatalf("expected a result, got nil")
+	}
+
+	integer, ok := evaluated.(*object.Integer)
+	if !ok {
+		t.Fatalf("expected integer result from sql.add, got %T (%v)", evaluated, evaluated)
+	}
+	if integer.Value != 8 {
+		t.Fatalf("expected sql.add(3, 5)=8, got %d", integer.Value)
+	}
+}

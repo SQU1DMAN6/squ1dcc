@@ -11,14 +11,15 @@ import (
 type ReturnMode string
 
 const (
-	ReturnAuto   ReturnMode = "auto"
-	ReturnString ReturnMode = "string"
-	ReturnRaw    ReturnMode = "raw"
-	ReturnInt    ReturnMode = "int"
-	ReturnFloat  ReturnMode = "float"
-	ReturnBool   ReturnMode = "bool"
-	ReturnNull   ReturnMode = "null"
-	ReturnJSON   ReturnMode = "json"
+	typedArgPrefix            = "__sqx_typed__:"
+	ReturnAuto     ReturnMode = "auto"
+	ReturnString   ReturnMode = "string"
+	ReturnRaw      ReturnMode = "raw"
+	ReturnInt      ReturnMode = "int"
+	ReturnFloat    ReturnMode = "float"
+	ReturnBool     ReturnMode = "bool"
+	ReturnNull     ReturnMode = "null"
+	ReturnJSON     ReturnMode = "json"
 )
 
 type Handler func(args []string) (interface{}, error)
@@ -333,21 +334,91 @@ func RequireArgs(args []string, expected int) error {
 	return nil
 }
 
+func DecodeArg(arg string) (interface{}, error) {
+	if !strings.HasPrefix(arg, typedArgPrefix) {
+		return arg, nil
+	}
+	payload := strings.TrimPrefix(arg, typedArgPrefix)
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		return nil, fmt.Errorf("failed to decode typed SQX argument: %w", err)
+	}
+	return decoded, nil
+}
+
+func ArgAny(args []string, index int) (interface{}, error) {
+	if index < 0 || index >= len(args) {
+		return nil, fmt.Errorf("missing argument at index %d", index)
+	}
+	return DecodeArg(args[index])
+}
+
 func ArgString(args []string, index int) (string, error) {
 	if index < 0 || index >= len(args) {
 		return "", fmt.Errorf("missing argument at index %d", index)
 	}
-	return args[index], nil
+
+	decoded, err := DecodeArg(args[index])
+	if err != nil {
+		return "", err
+	}
+
+	switch v := decoded.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case nil:
+		return "", nil
+	default:
+		return fmt.Sprint(v), nil
+	}
+}
+
+func ArgBool(args []string, index int) (bool, error) {
+	if index < 0 || index >= len(args) {
+		return false, fmt.Errorf("missing argument at index %d", index)
+	}
+
+	decoded, err := DecodeArg(args[index])
+	if err != nil {
+		return false, err
+	}
+
+	switch v := decoded.(type) {
+	case bool:
+		return v, nil
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(strings.ToLower(v)))
+		if err != nil {
+			return false, fmt.Errorf("argument %d must be bool: %w", index, err)
+		}
+		return parsed, nil
+	case float64:
+		return v != 0, nil
+	default:
+		return false, fmt.Errorf("argument %d must be bool", index)
+	}
 }
 
 func ArgInt(args []string, index int) (int64, error) {
-	value, err := ArgString(args, index)
+	decoded, err := ArgAny(args, index)
 	if err != nil {
 		return 0, err
 	}
-	i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("argument %d must be int: %w", index, err)
+
+	switch v := decoded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("argument %d must be int: %w", index, err)
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("argument %d must be int", index)
 	}
-	return i, nil
 }

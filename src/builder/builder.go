@@ -18,14 +18,33 @@ import (
 
 const embeddedMarker = "SQU1D++EMBED"
 
+// Verbosity sets builder logging
+var Verbosity = 0
+
+func SetVerbosity(v int) {
+	if v < 0 {
+		v = 0
+	}
+	Verbosity = v
+}
+
+func logf(level int, format string, a ...interface{}) {
+	if Verbosity >= level {
+		fmt.Fprintf(os.Stderr, format+"\n", a...)
+	}
+}
+
 // BuildStandalone compiles a SQU1D++ file to a standalone executable
 // that requires no external dependencies or project files
 func BuildStandalone(inputFile, outputFile string) error {
+	logf(1, "BuildStandalone: input=%s output=%s", inputFile, outputFile)
+
 	// Read and compile the source code
 	source, err := os.ReadFile(inputFile)
 	if err != nil {
 		return fmt.Errorf("could not read input file: %v", err)
 	}
+	logf(2, "Read %d bytes from %s", len(source), inputFile)
 
 	baseDir := filepath.Dir(inputFile)
 
@@ -33,6 +52,10 @@ func BuildStandalone(inputFile, outputFile string) error {
 	expandedCode, err := expandIncludes(string(source), baseDir)
 	if err != nil {
 		return fmt.Errorf("include expansion error: %v", err)
+	}
+	logf(1, "Expanded includes: %d bytes", len(expandedCode))
+	if Verbosity >= 3 {
+		logf(3, "Expanded code:\n%s", expandedCode)
 	}
 
 	// Pre-process pkg.include() calls to build namespace objects
@@ -145,7 +168,12 @@ func main() {
 
 	// First, attempt to write a fully embedded executable from the current compiler binary.
 	if currentExe, err := findSourceExecutable(); err == nil {
+		logf(2, "Trying embedded executable path: %s", currentExe)
 		if err := writeEmbeddedExecutable(outputFile, currentExe, bcData); err == nil {
+			logf(1, "Wrote embedded executable to %s", outputFile)
+			if Verbosity >= 3 {
+				logf(3, "Embedded bytecode size: %d bytes", len(bcData))
+			}
 			return nil
 		}
 	}
@@ -249,10 +277,15 @@ func compileSource(source string) (*compiler.Bytecode, error) {
 func expandIncludes(code string, baseDir string) (string, error) {
 	var result []string
 	scanner := bufio.NewScanner(strings.NewReader(code))
+	row := 0
 
 	for scanner.Scan() {
+		row++
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
+		if Verbosity >= 3 {
+			logf(3, "expandIncludes row %d -> %q", row, trimmed)
+		}
 
 		// Check for include() or pkg.include() calls
 		includeCall := ""

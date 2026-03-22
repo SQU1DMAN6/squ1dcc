@@ -11,14 +11,15 @@ import (
 type SQXReturnMode string
 
 const (
-	SQXReturnAuto   SQXReturnMode = "auto"
-	SQXReturnString SQXReturnMode = "string"
-	SQXReturnRaw    SQXReturnMode = "raw"
-	SQXReturnInt    SQXReturnMode = "int"
-	SQXReturnFloat  SQXReturnMode = "float"
-	SQXReturnBool   SQXReturnMode = "bool"
-	SQXReturnNull   SQXReturnMode = "null"
-	SQXReturnJSON   SQXReturnMode = "json"
+	sqxTypedArgPrefix               = "__sqx_typed__:"
+	SQXReturnAuto     SQXReturnMode = "auto"
+	SQXReturnString   SQXReturnMode = "string"
+	SQXReturnRaw      SQXReturnMode = "raw"
+	SQXReturnInt      SQXReturnMode = "int"
+	SQXReturnFloat    SQXReturnMode = "float"
+	SQXReturnBool     SQXReturnMode = "bool"
+	SQXReturnNull     SQXReturnMode = "null"
+	SQXReturnJSON     SQXReturnMode = "json"
 )
 
 type SQXHandler func(args []string) (interface{}, error)
@@ -318,34 +319,92 @@ func SQXRequireArgs(args []string, expected int) error {
 	return nil
 }
 
+func SQXDecodeArg(arg string) (interface{}, error) {
+	if !strings.HasPrefix(arg, sqxTypedArgPrefix) {
+		return arg, nil
+	}
+	payload := strings.TrimPrefix(arg, sqxTypedArgPrefix)
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		return nil, fmt.Errorf("failed to decode typed SQX argument: %w", err)
+	}
+	return decoded, nil
+}
+
+func SQXArgAny(args []string, index int) (interface{}, error) {
+	if index < 0 || index >= len(args) {
+		return nil, fmt.Errorf("missing argument at index %d", index)
+	}
+	return SQXDecodeArg(args[index])
+}
+
 func SQXArgString(args []string, index int) (string, error) {
 	if index < 0 || index >= len(args) {
 		return "", fmt.Errorf("missing argument at index %d", index)
 	}
-	return args[index], nil
+
+	decoded, err := SQXDecodeArg(args[index])
+	if err != nil {
+		return "", err
+	}
+
+	switch v := decoded.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case nil:
+		return "", nil
+	default:
+		return fmt.Sprint(v), nil
+	}
 }
 
 func SQXArgBool(args []string, index int) (bool, error) {
 	if index < 0 || index >= len(args) {
 		return false, fmt.Errorf("missing argument at index %d", index)
 	}
-	if args[index] == "true" {
-		return true, nil
-	} else if args[index] == "false" {
-		return false, nil
-	} else {
-		return false, fmt.Errorf("incorrect value provided.")
+
+	decoded, err := SQXDecodeArg(args[index])
+	if err != nil {
+		return false, err
+	}
+
+	switch v := decoded.(type) {
+	case bool:
+		return v, nil
+	case string:
+		if v == "true" {
+			return true, nil
+		} else if v == "false" {
+			return false, nil
+		}
+		return false, fmt.Errorf("incorrect value provided")
+	case float64:
+		return v != 0, nil
+	default:
+		return false, fmt.Errorf("incorrect value provided")
 	}
 }
 
 func SQXArgInt(args []string, index int) (int64, error) {
-	value, err := SQXArgString(args, index)
+	decoded, err := SQXArgAny(args, index)
 	if err != nil {
 		return 0, err
 	}
-	i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("argument %d must be int: %w", index, err)
+
+	switch v := decoded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("argument %d must be int: %w", index, err)
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("argument %d must be int", index)
 	}
-	return i, nil
 }

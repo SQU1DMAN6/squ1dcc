@@ -618,6 +618,10 @@ The module writes the result to stdout.
 Supported function fields:
 - `return`: output parsing mode (`auto`, `string`, `raw`, `int`, `float`, `bool`, `null`, `json`).
 
+Typed SQX arguments:
+- Runtime now forwards arrays/objects as typed payloads for executable `.sqx` modules.
+- In Go SQX templates/runtime helpers, use `SQXArgAny`, `SQXArgBool`, `SQXArgInt`, and `SQXArgString` to decode non-string values safely.
+
 Backward compatibility:
 - JSON command manifests are still supported (`exec`, `append_args`, `env`), but the preferred model is a native executable `.sqx` module.
 

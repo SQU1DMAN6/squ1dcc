@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const sqxTypedArgPrefix = "__sqx_typed__:"
+
 // SQXManifest is the JSON schema loaded from .sqx plugin files.
 type SQXManifest struct {
 	Version   int                        `json:"version"`
@@ -298,6 +300,39 @@ func sqxJSONToObject(v interface{}) Object {
 	}
 }
 
+func sqxObjectToNative(arg Object) interface{} {
+	switch v := arg.(type) {
+	case *String:
+		return v.Value
+	case *Integer:
+		return v.Value
+	case *Float:
+		return v.Value
+	case *Boolean:
+		return v.Value
+	case *Null:
+		return nil
+	case *Array:
+		out := make([]interface{}, len(v.Elements))
+		for i, el := range v.Elements {
+			out[i] = sqxObjectToNative(el)
+		}
+		return out
+	case *Hash:
+		out := make(map[string]interface{}, len(v.Pairs))
+		for _, pair := range v.Pairs {
+			k, ok := pair.Key.(*String)
+			if !ok {
+				continue
+			}
+			out[k.Value] = sqxObjectToNative(pair.Value)
+		}
+		return out
+	default:
+		return arg.Inspect()
+	}
+}
+
 func sqxArgToString(arg Object) string {
 	switch v := arg.(type) {
 	case *String:
@@ -310,6 +345,13 @@ func sqxArgToString(arg Object) string {
 		return strconv.FormatBool(v.Value)
 	case *Null:
 		return ""
+	case *Array, *Hash:
+		native := sqxObjectToNative(arg)
+		encoded, err := json.Marshal(native)
+		if err == nil {
+			return sqxTypedArgPrefix + string(encoded)
+		}
+		return arg.Inspect()
 	default:
 		return arg.Inspect()
 	}

@@ -42,11 +42,38 @@ func main() {
 		panic(err)
 	}
 
+	// custom verbosity parsing: -v, -vv, -vvv
+	verbosity := 0
+	cleanArgs := []string{os.Args[0]}
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "-v":
+			if verbosity < 1 {
+				verbosity = 1
+			}
+			continue
+		case "-vv":
+			if verbosity < 2 {
+				verbosity = 2
+			}
+			continue
+		case "-vvv":
+			if verbosity < 3 {
+				verbosity = 3
+			}
+			continue
+		default:
+			cleanArgs = append(cleanArgs, arg)
+		}
+	}
+	os.Args = cleanArgs
+
 	compileFlag := flag.Bool("B", false, "Build .sqd file to executable")
 	outputFlag := flag.String("o", "", "Output executable name (default: same as input file)")
 	flag.Parse()
 
 	args := flag.Args()
+	builder.SetVerbosity(verbosity)
 
 	if *compileFlag {
 		if len(args) == 0 {

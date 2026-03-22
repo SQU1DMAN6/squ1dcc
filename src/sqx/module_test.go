@@ -80,3 +80,43 @@ func TestModuleRunUnknownFunction(t *testing.T) {
 		t.Fatalf("unexpected stderr: %q", errOut.String())
 	}
 }
+
+func TestTypedArgHelpers(t *testing.T) {
+	typed := typedArgPrefix + `{"name":"Ada","scores":[1,2,3],"active":true}`
+	decoded, err := DecodeArg(typed)
+	if err != nil {
+		t.Fatalf("DecodeArg returned error: %v", err)
+	}
+
+	obj, ok := decoded.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected decoded value to be map, got %T", decoded)
+	}
+	if obj["name"] != "Ada" {
+		t.Fatalf("expected name Ada, got %#v", obj["name"])
+	}
+
+	anyVal, err := ArgAny([]string{typed}, 0)
+	if err != nil {
+		t.Fatalf("ArgAny returned error: %v", err)
+	}
+	if _, ok := anyVal.(map[string]interface{}); !ok {
+		t.Fatalf("expected ArgAny map value, got %T", anyVal)
+	}
+
+	b, err := ArgBool([]string{typedArgPrefix + "true"}, 0)
+	if err != nil {
+		t.Fatalf("ArgBool returned error: %v", err)
+	}
+	if !b {
+		t.Fatalf("expected ArgBool true")
+	}
+
+	i, err := ArgInt([]string{typedArgPrefix + "9"}, 0)
+	if err != nil {
+		t.Fatalf("ArgInt returned error: %v", err)
+	}
+	if i != 9 {
+		t.Fatalf("expected ArgInt 9, got %d", i)
+	}
+}
