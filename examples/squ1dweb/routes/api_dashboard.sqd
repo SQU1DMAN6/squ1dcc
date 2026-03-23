@@ -1,0 +1,2 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+io.echo(http.response("200", "application/json", "{\"dashboard\":\"Welcome to your dashboard!\"}"))

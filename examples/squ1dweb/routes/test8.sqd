@@ -1,0 +1,27 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+var raw = "username=test&password=123"
+var username=""
+var password=""
+var pairs = string.sepr(raw, "&")
+var i = 0
+while (i < array.cat(pairs)) {
+var pair = pairs[i]
+if (pair != "") {
+var kv = string.sepr(pair, "=")
+var key = kv[0]
+var value = ""
+if (array.cat(kv) > 1) {
+value = kv[1]
+}
+if (key == "username") {
+username = value
+}
+if (key == "password") {
+password = value
+}
+}
+i = i + 1
+}
+var res = http.db_exec("INSERT INTO users (username, password) VALUES (?,?)", "[\"" + username + "\",\"" + password + "\"]")
+io.echo("res type=", type.tp(res), " res=", res, "\n")
+io.echo(http.response("200","application/json","{\"ok\":true}\""))

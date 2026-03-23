@@ -1,0 +1,31 @@
+pkg.include("lib/http.sqx", "http")
+
+io.echo(" running web flow test...\n")
+
+# Ensure route setup is in SQD (use controller scripts)
+var _ = http.set_route("GET", "/", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/index.sqd")
+var _ = http.set_route("POST", "/api/register", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_register.sqd")
+var _ = http.set_route("POST", "/api/login", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_login.sqd")
+var _ = http.set_route("GET", "/api/dashboard", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_dashboard.sqd")
+var _ = http.set_route("GET", "/api/verify", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_verify.sqd")
+var _ = http.set_route("GET", "/static/*", "static")
+
+# Start server
+var startResult = http.server_start("8080")
+io.echo("server_start: ", startResult, "\n")
+
+time.sleep(1000)
+
+# A single HTTP GET request to root
+var root = http.get("http://localhost:8080/")
+io.echo("root status:", root.status, " length:", root.length, "\n")
+
+# Registration path should currently be active (via SQD route)
+var reg = http.post("http://localhost:8080/api/register", "{\"username\":\"nomad\",\"password\":\"1234\"}")
+io.echo("register: ", reg, "\n")
+
+# Login path for counting
+var login = http.post("http://localhost:8080/api/login", "{\"username\":\"nomad\",\"password\":\"1234\"}")
+io.echo("login: ", login, "\n")
+
+io.echo("done test\n")

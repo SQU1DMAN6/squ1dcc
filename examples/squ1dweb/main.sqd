@@ -1,6 +1,16 @@
 pkg.include("lib/http_plugin/http.sqx", "http")
 
 io.echo("Starting SQU1D++ Web Server...\n")
+
+var _ = http.db_open("/tmp/squ1dweb.db")
+var _ = http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", "")
+
+var _ = http.set_route("GET", "/", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/index.sqd")
+var _ = http.set_route("POST", "/api/register", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_register.sqd")
+var _ = http.set_route("POST", "/api/login", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_login.sqd")
+var _ = http.set_route("GET", "/api/dashboard", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_dashboard.sqd")
+var _ = http.set_route("GET", "/api/verify", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_verify.sqd")
+var _ = http.set_route("GET", "/static/*", "static")
 var result = http.server_start("8080")
 io.echo(result, "\n")
 io.echo("Open http://localhost:8080 in your browser\n")
@@ -8,7 +18,7 @@ io.echo("Press Ctrl+C to stop the server\n")
 
 # Keep the server running for a long time
 var i = 0
-while (i < 3600) {
+while (i < 360000) {
 	time.sleep(1000)
 	var i = i + 1
 }

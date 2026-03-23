@@ -1,0 +1,38 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var raw = os.env("HTTP_BODY")
+var username = ""
+var password = ""
+var pairs = string.sepr(raw, "&")
+var i = 0
+while (i < array.cat(pairs)) {
+	var pair = pairs[i]
+	if (pair != "") {
+		var kv = string.sepr(pair, "=")
+		var key = kv[0]
+		var value = ""
+		if (array.cat(kv) > 1) {
+			value = kv[1]
+		}
+		if (key == "username") {
+			username = value
+		}
+		if (key == "password") {
+			password = value
+		}
+	}
+	i = i + 1
+}
+if (username == "" or password == "") {
+	io.echo(http.response("400", "application/json", "{\"error\":\"username/password required\"}"))
+	return
+}
+
+var queryParams = "[\"" + username + "\",\"" + password + "\"]"
+var found = http.db_query("SELECT id FROM users WHERE username = ? AND password = ?", queryParams)
+if (type.tp(found) != "Array" or array.cat(found) == 0) {
+	io.echo(http.response("401", "application/json", "{\"error\":\"invalid credentials\"}"))
+	return
+}
+
+io.echo(http.response("200", "application/json", "{\"status\":\"logged_in\",\"token\":\"dummy-token\"}"))

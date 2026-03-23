@@ -1,0 +1,38 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var raw = os.env("HTTP_BODY")
+var username = ""
+var password = ""
+var pairs = string.sepr(raw, "&")
+var i = 0
+while (i < array.cat(pairs)) {
+	var pair = pairs[i]
+	if (pair != "") {
+		var kv = string.sepr(pair, "=")
+		var key = kv[0]
+		var value = ""
+		if (array.cat(kv) > 1) {
+			value = kv[1]
+		}
+		if (key == "username") {
+			username = value
+		}
+		if (key == "password") {
+			password = value
+		}
+	}
+	i = i + 1
+}
+if (username == "" or password == "") {
+	io.echo(http.response("400", "application/json", "{\"error\":\"username/password required\"}"))
+	return
+}
+
+var insertParams = "[\"" + username + "\",\"" + password + "\"]"
+var res = http.db_exec("INSERT INTO users (username, password) VALUES (?,?)", insertParams)
+if type.tp(res) == "String" {
+	io.echo(http.response("500", "application/json", "{\"error\":\"registration failed\"}"))
+	return
+}
+
+io.echo(http.response("201", "application/json", "{\"status\":\"registered\"}"))
