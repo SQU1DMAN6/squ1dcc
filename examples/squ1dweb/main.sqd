@@ -1,0 +1,15 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+io.echo("Starting SQU1D++ Web Server...\n")
+var result = http.server_start("8080")
+io.echo(result, "\n")
+io.echo("Open http://localhost:8080 in your browser\n")
+io.echo("Press Ctrl+C to stop the server\n")
+
+# Keep the server running for a long time
+var i = 0
+while (i < 3600) {
+	time.sleep(1000)
+	var i = i + 1
+}
+

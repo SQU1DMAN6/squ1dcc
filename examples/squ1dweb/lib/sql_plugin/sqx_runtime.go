@@ -1,0 +1,410 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+)
+
+type SQXReturnMode string
+
+const (
+	sqxTypedArgPrefix            = "__sqx_typed__:"
+	SQXReturnAuto   SQXReturnMode = "auto"
+	SQXReturnString SQXReturnMode = "string"
+	SQXReturnRaw    SQXReturnMode = "raw"
+	SQXReturnInt    SQXReturnMode = "int"
+	SQXReturnFloat  SQXReturnMode = "float"
+	SQXReturnBool   SQXReturnMode = "bool"
+	SQXReturnNull   SQXReturnMode = "null"
+	SQXReturnJSON   SQXReturnMode = "json"
+)
+
+type SQXHandler func(args []string) (interface{}, error)
+
+type SQXMethod struct {
+	Name   string
+	Return SQXReturnMode
+	Handle SQXHandler
+}
+
+type SQXModule struct {
+	name    string
+	methods map[string]SQXMethod
+}
+
+func NewSQXModule(name string) *SQXModule {
+	return &SQXModule{
+		name:    name,
+		methods: make(map[string]SQXMethod),
+	}
+}
+
+func (m *SQXModule) Register(method SQXMethod) {
+	name := strings.TrimSpace(method.Name)
+	if name == "" || method.Handle == nil {
+		return
+	}
+	if method.Return == "" {
+		method.Return = SQXReturnAuto
+	}
+	method.Name = name
+	m.methods[name] = method
+}
+
+func (m *SQXModule) RegisterMany(methods ...SQXMethod) {
+	for _, method := range methods {
+		m.Register(method)
+	}
+}
+
+func (m *SQXModule) Run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintf(stderr, "usage: %s <__sqx_manifest__|__sqx_call__>\n", m.name)
+		return 2
+	}
+
+	switch args[0] {
+	case "__sqx_manifest__":
+		return m.writeManifest(stdout, stderr)
+	case "__sqx_call__":
+		return m.call(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown SQX command: %s\n", args[0])
+		return 2
+	}
+}
+
+func (m *SQXModule) writeManifest(stdout, stderr io.Writer) int {
+	type manifestFunc struct {
+		Return string `json:"return"`
+	}
+	type manifest struct {
+		Version   int                     `json:"version"`
+		Functions map[string]manifestFunc `json:"functions"`
+	}
+
+	out := manifest{
+		Version:   1,
+		Functions: make(map[string]manifestFunc, len(m.methods)),
+	}
+	for name, method := range m.methods {
+		out.Functions[name] = manifestFunc{Return: string(method.Return)}
+	}
+
+	data, err := json.Marshal(out)
+	if err != nil {
+		fmt.Fprintf(stderr, "could not encode SQX manifest: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(data); err != nil {
+		fmt.Fprintf(stderr, "could not write SQX manifest: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func (m *SQXModule) call(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "missing SQX function name")
+		return 2
+	}
+
+	method, ok := m.methods[args[0]]
+	if !ok {
+		fmt.Fprintf(stderr, "unknown SQX function: %s\n", args[0])
+		return 2
+	}
+
+	result, err := method.Handle(args[1:])
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+
+	if err := writeSQXResult(stdout, method.Return, result); err != nil {
+		fmt.Fprintf(stderr, "SQX result encode failed: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func writeSQXResult(out io.Writer, mode SQXReturnMode, value interface{}) error {
+	switch strings.ToLower(strings.TrimSpace(string(mode))) {
+	case "", string(SQXReturnAuto):
+		return writeSQXAuto(out, value)
+	case string(SQXReturnString):
+		_, err := io.WriteString(out, fmt.Sprint(value))
+		return err
+	case string(SQXReturnRaw):
+		if bytes, ok := value.([]byte); ok {
+			_, err := out.Write(bytes)
+			return err
+		}
+		_, err := io.WriteString(out, fmt.Sprint(value))
+		return err
+	case string(SQXReturnInt):
+		i, err := sqxToInt64(value)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, strconv.FormatInt(i, 10))
+		return err
+	case string(SQXReturnFloat):
+		f, err := sqxToFloat64(value)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, strconv.FormatFloat(f, 'f', -1, 64))
+		return err
+	case string(SQXReturnBool):
+		b, err := sqxToBool(value)
+		if err != nil {
+			return err
+		}
+		if b {
+			_, err = io.WriteString(out, "true")
+		} else {
+			_, err = io.WriteString(out, "false")
+		}
+		return err
+	case string(SQXReturnNull):
+		return nil
+	case string(SQXReturnJSON):
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		_, err = out.Write(data)
+		return err
+	default:
+		return fmt.Errorf("unknown SQX return mode %q", mode)
+	}
+}
+
+func writeSQXAuto(out io.Writer, value interface{}) error {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case string:
+		_, err := io.WriteString(out, v)
+		return err
+	case []byte:
+		_, err := out.Write(v)
+		return err
+	case bool:
+		if v {
+			_, err := io.WriteString(out, "true")
+			return err
+		}
+		_, err := io.WriteString(out, "false")
+		return err
+	case int:
+		_, err := io.WriteString(out, strconv.Itoa(v))
+		return err
+	case int8, int16, int32, int64:
+		i, err := sqxToInt64(v)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, strconv.FormatInt(i, 10))
+		return err
+	case uint, uint8, uint16, uint32, uint64:
+		i, err := sqxToInt64(v)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, strconv.FormatInt(i, 10))
+		return err
+	case float32, float64:
+		f, err := sqxToFloat64(v)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, strconv.FormatFloat(f, 'f', -1, 64))
+		return err
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		_, err = out.Write(data)
+		return err
+	}
+}
+
+func sqxToInt64(v interface{}) (int64, error) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), nil
+	case int8:
+		return int64(n), nil
+	case int16:
+		return int64(n), nil
+	case int32:
+		return int64(n), nil
+	case int64:
+		return n, nil
+	case uint:
+		return int64(n), nil
+	case uint8:
+		return int64(n), nil
+	case uint16:
+		return int64(n), nil
+	case uint32:
+		return int64(n), nil
+	case uint64:
+		return int64(n), nil
+	case float32:
+		return int64(n), nil
+	case float64:
+		return int64(n), nil
+	case string:
+		return strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+	default:
+		return 0, fmt.Errorf("cannot convert %T to int", v)
+	}
+}
+
+func sqxToFloat64(v interface{}) (float64, error) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), nil
+	case int8:
+		return float64(n), nil
+	case int16:
+		return float64(n), nil
+	case int32:
+		return float64(n), nil
+	case int64:
+		return float64(n), nil
+	case uint:
+		return float64(n), nil
+	case uint8:
+		return float64(n), nil
+	case uint16:
+		return float64(n), nil
+	case uint32:
+		return float64(n), nil
+	case uint64:
+		return float64(n), nil
+	case float32:
+		return float64(n), nil
+	case float64:
+		return n, nil
+	case string:
+		return strconv.ParseFloat(strings.TrimSpace(n), 64)
+	default:
+		return 0, fmt.Errorf("cannot convert %T to float", v)
+	}
+}
+
+func sqxToBool(v interface{}) (bool, error) {
+	switch b := v.(type) {
+	case bool:
+		return b, nil
+	case string:
+		return strconv.ParseBool(strings.TrimSpace(strings.ToLower(b)))
+	default:
+		return false, fmt.Errorf("cannot convert %T to bool", v)
+	}
+}
+
+func SQXRequireArgs(args []string, expected int) error {
+	if len(args) != expected {
+		return fmt.Errorf("expected %d argument(s), got %d", expected, len(args))
+	}
+	return nil
+}
+
+func SQXDecodeArg(arg string) (interface{}, error) {
+	if !strings.HasPrefix(arg, sqxTypedArgPrefix) {
+		return arg, nil
+	}
+	payload := strings.TrimPrefix(arg, sqxTypedArgPrefix)
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		return nil, fmt.Errorf("failed to decode typed SQX argument: %w", err)
+	}
+	return decoded, nil
+}
+
+func SQXArgAny(args []string, index int) (interface{}, error) {
+	if index < 0 || index >= len(args) {
+		return nil, fmt.Errorf("missing argument at index %d", index)
+	}
+	return SQXDecodeArg(args[index])
+}
+
+func SQXArgString(args []string, index int) (string, error) {
+	if index < 0 || index >= len(args) {
+		return "", fmt.Errorf("missing argument at index %d", index)
+	}
+
+	decoded, err := SQXDecodeArg(args[index])
+	if err != nil {
+		return "", err
+	}
+
+	switch v := decoded.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case nil:
+		return "", nil
+	default:
+		return fmt.Sprint(v), nil
+	}
+}
+
+func SQXArgBool(args []string, index int) (bool, error) {
+	if index < 0 || index >= len(args) {
+		return false, fmt.Errorf("missing argument at index %d", index)
+	}
+
+	decoded, err := SQXDecodeArg(args[index])
+	if err != nil {
+		return false, err
+	}
+
+	switch v := decoded.(type) {
+	case bool:
+		return v, nil
+	case string:
+		if v == "true" {
+			return true, nil
+		} else if v == "false" {
+			return false, nil
+		}
+		return false, fmt.Errorf("incorrect value provided")
+	case float64:
+		return v != 0, nil
+	default:
+		return false, fmt.Errorf("incorrect value provided")
+	}
+}
+
+func SQXArgInt(args []string, index int) (int64, error) {
+	decoded, err := SQXArgAny(args, index)
+	if err != nil {
+		return 0, err
+	}
+
+	switch v := decoded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("argument %d must be int: %w", index, err)
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("argument %d must be int", index)
+	}
+}
