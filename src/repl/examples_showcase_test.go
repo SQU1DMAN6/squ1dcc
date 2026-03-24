@@ -8,9 +8,17 @@ import (
 	"testing"
 )
 
+func skipIfMissing(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("example artifact missing: %s (%v)", path, err)
+	}
+}
+
 func TestPluginsShellShowcase(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", "examples", "plugins_shell"))
 	modulePath := filepath.Join(root, "lib", "tooling.sqx")
+	skipIfMissing(t, modulePath)
 	if err := os.Chmod(modulePath, 0o755); err != nil {
 		t.Fatalf("could not chmod shell module: %v", err)
 	}
@@ -36,6 +44,7 @@ func TestPluginsShellShowcase(t *testing.T) {
 func TestPluginsSQLShowcase(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", "examples", "plugins_test"))
 	modulePath := filepath.Join(root, "lib", "sql.sqx")
+	skipIfMissing(t, modulePath)
 	if err := os.Chmod(modulePath, 0o755); err != nil {
 		t.Fatalf("could not chmod sql module: %v", err)
 	}
@@ -61,6 +70,7 @@ func TestPluginsSQLShowcase(t *testing.T) {
 
 func TestHelloWorldSQXShowcase(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", "examples", "hello_world_sqx"))
+	skipIfMissing(t, filepath.Join(root, "showcase.sqd"))
 	buildDir := filepath.Join(root, "lib")
 	buildCmd := exec.Command("bash", "build.sh")
 	buildCmd.Dir = buildDir

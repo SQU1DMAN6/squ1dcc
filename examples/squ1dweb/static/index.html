@@ -1,13 +1,131 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SQU1D Static Content</title>
-  <style>body{font-family:Arial,sans-serif;margin:20px;}</style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQU1D Web</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --ink: #1b2430;
+      --muted: #5b6777;
+      --accent: #0b6bcb;
+      --ok: #137333;
+      --err: #b42318;
+      --line: #d9e0ea;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #eef3fa 0%, #f9fbff 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+    }
+    h1 { margin: 0 0 8px; }
+    p { color: var(--muted); margin-top: 0; }
+    form { display: grid; gap: 8px; }
+    input, button {
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+    button {
+      border-color: transparent;
+      color: white;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #5f6b7b;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      overflow: auto;
+      min-height: 80px;
+      margin: 0;
+    }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #fff;
+    }
+  </style>
 </head>
 <body>
-  <h1>SQU1D Static Page</h1>
-  <p>This is served from <code>/static/index.html</code>.</p>
-  <p><a href="/">Go to dynamic homepage</a></p>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>SQU1D++ Web Server</h1>
+        <p>Routes and backend are SQD. SQX provides the HTTP/DB engine.</p>
+      </div>
+      <span class="badge">SQLite + SQD Routes</span>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Register</h2>
+        <form id="registerForm">
+          <input name="username" placeholder="username" required>
+          <input name="password" placeholder="password" type="password" required>
+          <button type="submit">Register</button>
+        </form>
+        <pre id="registerResult"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Login</h2>
+        <form id="loginForm">
+          <input name="username" placeholder="username" required>
+          <input name="password" placeholder="password" type="password" required>
+          <button type="submit">Login</button>
+        </form>
+        <pre id="loginResult"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Dashboard</h2>
+        <p>Requires an Authorization header from login.</p>
+        <button id="dashBtn" class="secondary" type="button">Fetch dashboard</button>
+        <pre id="dashResult"></pre>
+      </section>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
 </body>
 </html>

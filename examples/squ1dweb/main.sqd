@@ -2,24 +2,30 @@ pkg.include("lib/http_plugin/http.sqx", "http")
 
 io.echo("Starting SQU1D++ Web Server...\n")
 
-var _ = http.db_open("/tmp/squ1dweb.db")
-var _ = http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", "")
+http.set_static_root("static")
+http.set_log_file("squ1dweb.log")
+http.db_open("squ1dweb.db")
+http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", [])
 
-var _ = http.set_route("GET", "/", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/index.sqd")
-var _ = http.set_route("POST", "/api/register", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_register.sqd")
-var _ = http.set_route("POST", "/api/login", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_login.sqd")
-var _ = http.set_route("GET", "/api/dashboard", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_dashboard.sqd")
-var _ = http.set_route("GET", "/api/verify", "/home/qchef/Documents/squ1dcc/examples/squ1dweb/routes/api_verify.sqd")
-var _ = http.set_route("GET", "/static/*", "static")
-var result = http.server_start("8080")
+http.set_route("GET", "/", "routes/index.sqd")
+http.set_route("POST", "/api/register", "routes/api_register.sqd")
+http.set_route("POST", "/api/login", "routes/api_login.sqd")
+http.set_route("GET", "/api/dashboard", "routes/api_dashboard.sqd")
+http.set_route("GET", "/api/verify", "routes/api_verify.sqd")
+http.set_route("GET", "/static/*", "static")
+
+var port = "8080"
+
+var result = http.server_start(port)
 io.echo(result, "\n")
-io.echo("Open http://localhost:8080 in your browser\n")
-io.echo("Press Ctrl+C to stop the server\n")
+io.echo("Open http://127.0.0.1:" + port + " in your browser\n")
+io.echo("Log file: ", http.log_path(), "\n")
 
-# Keep the server running for a long time
-var i = 0
-while (i < 360000) {
-	time.sleep(1000)
-	var i = i + 1
+while (true) {
+	var command = io.read("> ")
+	if (command == "stop") {
+		var result = http.server_stop()
+		io.echo(result, "\n")
+		break
+	}
 }
-

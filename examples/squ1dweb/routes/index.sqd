@@ -1,4 +1,2 @@
 pkg.include("lib/http_plugin/http.sqx", "http")
-
-var html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>SQU1D Web</title><style>body{font-family:Arial,sans-serif;margin:20px;} .box{max-width:900px;margin:auto;}</style></head><body class=\"box\"><h1>SQU1D++ Web Server Home</h1><p>Use the forms below to register/login via SQLite3-backed endpoints.</p><div><h2>Register</h2><form id=\"registerForm\"><input name=\"username\" placeholder=\"username\" required><input name=\"password\" placeholder=\"password\" type=\"password\" required><button type=\"submit\">Register</button></form><pre id=\"registerResult\"></pre></div><div><h2>Login</h2><form id=\"loginForm\"><input name=\"username\" placeholder=\"username\" required><input name=\"password\" placeholder=\"password\" type=\"password\" required><button type=\"submit\">Login</button></form><pre id=\"loginResult\"></pre></div><div><h2>Dashboard</h2><button id=\"dashBtn\">Fetch dashboard</button><pre id=\"dashResult\"></pre></div><script src=\"/static/app.js\"></script></body></html>"
-io.echo(http.response("200", "text/html", html))
+io.echo(http.render_file(200, "static/index.html"))

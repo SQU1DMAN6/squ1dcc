@@ -1,5 +1,0 @@
-pkg.include("lib/http_plugin/http.sqx", "http")
-var r1 = http.db_open("/tmp/squ1dweb_test.db")
-io.echo("r1=", r1, "\n")
-var r2 = http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)", "")
-io.echo("r2=", r2, "\n")

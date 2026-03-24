@@ -1,2 +1,10 @@
 pkg.include("lib/http_plugin/http.sqx", "http")
-io.echo(http.response("200", "application/json", "{\"dashboard\":\"Welcome to your dashboard!\"}"))
+
+var headers = os.env("HTTP_HEADERS_JSON")
+var auth = http.header_get(headers, "Authorization", "")
+
+if (auth == "") {
+	io.echo(http.response_json(401, {error: "missing Authorization header"}))
+} el {
+	io.echo(http.response_json(200, {dashboard: "Welcome to your dashboard!"}))
+}
