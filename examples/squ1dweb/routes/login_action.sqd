@@ -1,0 +1,22 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var raw = os.env("HTTP_BODY")
+var username = http.form_get(raw, "username", "")
+var password = http.form_get(raw, "password", "")
+
+if (username == "" or password == "") {
+	io.echo(http.redirect(302, "/login?msg=Missing+credentials"))
+} el {
+	var found = http.db_query("SELECT password FROM users WHERE username = ?", [username])
+	if (type.tp(found) != "Array" or array.cat(found) == 0) {
+		io.echo(http.redirect(302, "/login?msg=Invalid+credentials"))
+	} el {
+		var verify = http.password_verify(password, found[0].password)
+		if (verify != 1) {
+			io.echo(http.redirect(302, "/login?msg=Invalid+credentials"))
+		} el {
+			var session = http.session_create({username: username})
+			io.echo(http.redirect(302, "/", {"Set-Cookie": session.set_cookie}))
+		}
+	}
+}

@@ -1,0 +1,30 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var session = http.session_get(os.env("HTTP_COOKIE"))
+
+if (session.id == "") {
+	io.echo(http.redirect(302, "/login?msg=Please+login+first"))
+} el {
+	var username = "guest"
+	if (type.tp(session.user) == "Hash") {
+		username = session.user.username
+	}
+
+	var rows = http.db_query("SELECT stored_name, original_name FROM uploads WHERE username = ? ORDER BY id DESC LIMIT 20", [username])
+	var filesHtml = "<li>No uploads yet.</li>"
+
+	if (type.tp(rows) == "Array" and array.cat(rows) > 0) {
+		filesHtml = ""
+		var i = 0
+		while (i < array.cat(rows)) {
+			var row = rows[i]
+			filesHtml = filesHtml + "<li><a href=\"/download/" + row.stored_name + "\">" + row.original_name + "</a></li>"
+			i = i + 1
+		}
+	}
+
+	io.echo(http.render_template(200, "views/dashboard.html", {
+		username: username,
+		files_html: filesHtml
+	}))
+}

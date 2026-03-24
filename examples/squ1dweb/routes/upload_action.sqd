@@ -1,0 +1,21 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var headers = os.env("HTTP_HEADERS_JSON")
+var session = http.session_get(os.env("HTTP_COOKIE"))
+if (session.id == "") {
+	io.echo(http.redirect(302, "/login?msg=Please+login+first"))
+} el {
+	var contentType = http.header_get(headers, "Content-Type", os.env("HTTP_CONTENT_TYPE"))
+	var bodyFile = os.env("HTTP_BODY_FILE")
+	var uploaded = http.upload_save(bodyFile, contentType, "file", "uploads")
+	if (type.tp(uploaded) == "Error" or type.tp(uploaded) == "ERROR") {
+		io.echo(http.redirect(302, "/?msg=Upload+failed"))
+	} el {
+		var username = "guest"
+		if (type.tp(session.user) == "Hash") {
+			username = session.user.username
+		}
+		var _ = http.db_exec("INSERT INTO uploads (username, stored_name, original_name) VALUES (?, ?, ?)", [username, uploaded.stored_name, uploaded.original_name])
+		io.echo(http.redirect(302, "/?msg=Upload+complete"))
+	}
+}

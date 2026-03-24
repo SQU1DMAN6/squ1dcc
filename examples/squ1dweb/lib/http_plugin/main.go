@@ -2,17 +2,24 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -42,9 +49,14 @@ type RouteResponse struct {
 }
 
 type EngineSettings struct {
-	StaticRoot string `json:"static_root"`
-	LogPath    string `json:"log_path"`
-	DBPath     string `json:"db_path"`
+	StaticRoot      string `json:"static_root"`
+	LogPath         string `json:"log_path"`
+	DBPath          string `json:"db_path"`
+	SessionPath     string `json:"session_path"`
+	SessionCookie   string `json:"session_cookie"`
+	SessionTTL      int    `json:"session_ttl_seconds"`
+	SecureCookies   bool   `json:"secure_cookies"`
+	UploadDirectory string `json:"upload_directory"`
 }
 
 type ServerState struct {
@@ -53,6 +65,20 @@ type ServerState struct {
 	LogPath    string `json:"log_path"`
 	StaticRoot string `json:"static_root"`
 	StartedAt  string `json:"started_at"`
+	TLS        bool   `json:"tls"`
+	CertPath   string `json:"cert_path,omitempty"`
+	KeyPath    string `json:"key_path,omitempty"`
+}
+
+type SessionRecord struct {
+	ID        string      `json:"id"`
+	User      interface{} `json:"user"`
+	CreatedAt string      `json:"created_at"`
+	ExpiresAt string      `json:"expires_at"`
+}
+
+type SessionStore struct {
+	Sessions map[string]SessionRecord `json:"sessions"`
 }
 
 var (
@@ -62,12 +88,16 @@ var (
 
 	routeMutex    sync.RWMutex
 	settingsMutex sync.Mutex
+	sessionMutex  sync.Mutex
 	logMutex      sync.Mutex
 
 	squ1dccPath = os.Getenv("SQU1DCC_BIN")
 	projectRoot = ""
 	staticRoot  = ""
 	logFilePath = ""
+
+	templateRawExprPattern = regexp.MustCompile(`<\?!=\s*([a-zA-Z0-9_.-]+)\s*\?>`)
+	templateExprPattern    = regexp.MustCompile(`<\?=\s*([a-zA-Z0-9_.-]+)\s*\?>`)
 )
 
 func init() {
@@ -89,6 +119,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "__server_tls__" {
+		if len(os.Args) > 4 {
+			startWebServerTLS(os.Args[2], os.Args[3], os.Args[4])
+		}
+		return
+	}
 
 	module := NewSQXModule("http")
 	module.RegisterMany(
@@ -98,6 +134,7 @@ func main() {
 		SQXMethod{Name: "status", Return: SQXReturnInt, Handle: statusHandler},
 
 		SQXMethod{Name: "server_start", Return: SQXReturnString, Handle: serverStartHandler},
+		SQXMethod{Name: "server_start_tls", Return: SQXReturnString, Handle: serverStartTLSHandler},
 		SQXMethod{Name: "server_stop", Return: SQXReturnString, Handle: serverStopHandler},
 		SQXMethod{Name: "server_status", Return: SQXReturnJSON, Handle: serverStatusHandler},
 
@@ -111,17 +148,37 @@ func main() {
 		SQXMethod{Name: "set_log_file", Return: SQXReturnString, Handle: setLogFileHandler},
 		SQXMethod{Name: "log_path", Return: SQXReturnString, Handle: logPathHandler},
 		SQXMethod{Name: "log_tail", Return: SQXReturnString, Handle: logTailHandler},
+		SQXMethod{Name: "set_upload_dir", Return: SQXReturnString, Handle: setUploadDirHandler},
+		SQXMethod{Name: "upload_dir", Return: SQXReturnString, Handle: uploadDirHandler},
+		SQXMethod{Name: "redirect", Return: SQXReturnString, Handle: redirectHandler},
 
 		SQXMethod{Name: "response", Return: SQXReturnString, Handle: responseHandler},
 		SQXMethod{Name: "response_json", Return: SQXReturnString, Handle: responseJSONHandler},
 		SQXMethod{Name: "response_html", Return: SQXReturnString, Handle: responseHTMLHandler},
 		SQXMethod{Name: "response_text", Return: SQXReturnString, Handle: responseTextHandler},
 		SQXMethod{Name: "render_file", Return: SQXReturnString, Handle: renderFileHandler},
+		SQXMethod{Name: "render_template", Return: SQXReturnString, Handle: renderTemplateHandler},
+		SQXMethod{Name: "download_file", Return: SQXReturnString, Handle: downloadFileHandler},
+		SQXMethod{Name: "upload_save", Return: SQXReturnJSON, Handle: uploadSaveHandler},
 
 		SQXMethod{Name: "parse_form", Return: SQXReturnJSON, Handle: parseFormHandler},
 		SQXMethod{Name: "form_get", Return: SQXReturnString, Handle: formGetHandler},
 		SQXMethod{Name: "parse_headers", Return: SQXReturnJSON, Handle: parseHeadersHandler},
 		SQXMethod{Name: "header_get", Return: SQXReturnString, Handle: headerGetHandler},
+		SQXMethod{Name: "cookie_get", Return: SQXReturnString, Handle: cookieGetHandler},
+		SQXMethod{Name: "set_session_file", Return: SQXReturnString, Handle: setSessionFileHandler},
+		SQXMethod{Name: "session_file", Return: SQXReturnString, Handle: sessionFileHandler},
+		SQXMethod{Name: "set_session_cookie", Return: SQXReturnString, Handle: setSessionCookieHandler},
+		SQXMethod{Name: "session_cookie", Return: SQXReturnString, Handle: sessionCookieHandler},
+		SQXMethod{Name: "set_session_ttl", Return: SQXReturnInt, Handle: setSessionTTLHandler},
+		SQXMethod{Name: "session_ttl", Return: SQXReturnInt, Handle: sessionTTLHandler},
+		SQXMethod{Name: "set_secure_cookies", Return: SQXReturnBool, Handle: setSecureCookiesHandler},
+		SQXMethod{Name: "secure_cookies", Return: SQXReturnBool, Handle: secureCookiesHandler},
+		SQXMethod{Name: "password_hash", Return: SQXReturnString, Handle: passwordHashHandler},
+		SQXMethod{Name: "password_verify", Return: SQXReturnInt, Handle: passwordVerifyHandler},
+		SQXMethod{Name: "session_create", Return: SQXReturnJSON, Handle: sessionCreateHandler},
+		SQXMethod{Name: "session_get", Return: SQXReturnJSON, Handle: sessionGetHandler},
+		SQXMethod{Name: "session_destroy", Return: SQXReturnJSON, Handle: sessionDestroyHandler},
 
 		SQXMethod{Name: "db_open", Return: SQXReturnString, Handle: dbOpenHandler},
 		SQXMethod{Name: "db_exec", Return: SQXReturnJSON, Handle: dbExecHandler},
@@ -315,12 +372,86 @@ func serverStartHandler(args []string) (interface{}, error) {
 		LogPath:    settings.LogPath,
 		StaticRoot: settings.StaticRoot,
 		StartedAt:  time.Now().Format(time.RFC3339),
+		TLS:        false,
 	}
 	if err := saveServerState(state); err != nil {
 		return nil, err
 	}
 
 	return fmt.Sprintf("Server started on port %s (PID: %d, logs: %s)", port, state.PID, settings.LogPath), nil
+}
+
+func serverStartTLSHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 3); err != nil {
+		return nil, err
+	}
+	port := strings.TrimSpace(args[0])
+	if port == "" {
+		return nil, fmt.Errorf("port cannot be empty")
+	}
+	certPath := resolvePath(args[1])
+	keyPath := resolvePath(args[2])
+	if !fileExists(certPath) {
+		return nil, fmt.Errorf("certificate file not found: %s", certPath)
+	}
+	if !fileExists(keyPath) {
+		return nil, fmt.Errorf("key file not found: %s", keyPath)
+	}
+
+	state := loadServerState()
+	if state.PID > 0 && isProcessRunning(state.PID) {
+		return fmt.Sprintf("Server already running on port %s (PID: %d, logs: %s)", state.Port, state.PID, state.LogPath), nil
+	}
+
+	settings := loadSettings()
+	if settings.StaticRoot == "" {
+		settings.StaticRoot = resolvePath("static")
+	}
+	if settings.LogPath == "" {
+		settings.LogPath = resolvePath("squ1dweb.log")
+	}
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(settings.LogPath), 0o755); err != nil {
+		return nil, fmt.Errorf("could not create log directory: %w", err)
+	}
+	logHandle, err := os.OpenFile(settings.LogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("could not open log file: %w", err)
+	}
+	defer logHandle.Close()
+
+	cmd := exec.Command(os.Args[0], "__server_tls__", port, certPath, keyPath)
+	cmd.Stdout = logHandle
+	cmd.Stderr = logHandle
+	cmd.Env = append(os.Environ(),
+		"SQU1DWEB_STATIC_ROOT="+settings.StaticRoot,
+		"SQU1DWEB_LOG_FILE="+settings.LogPath,
+	)
+	if runtime.GOOS != "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start TLS server: %w", err)
+	}
+
+	state = ServerState{
+		PID:        cmd.Process.Pid,
+		Port:       port,
+		LogPath:    settings.LogPath,
+		StaticRoot: settings.StaticRoot,
+		StartedAt:  time.Now().Format(time.RFC3339),
+		TLS:        true,
+		CertPath:   certPath,
+		KeyPath:    keyPath,
+	}
+	if err := saveServerState(state); err != nil {
+		return nil, err
+	}
+
+	return fmt.Sprintf("TLS server started on port %s (PID: %d, logs: %s)", port, state.PID, settings.LogPath), nil
 }
 
 func serverStopHandler(args []string) (interface{}, error) {
@@ -359,6 +490,9 @@ func serverStatusHandler(args []string) (interface{}, error) {
 		"log_path":    state.LogPath,
 		"static_root": state.StaticRoot,
 		"started_at":  state.StartedAt,
+		"tls":         state.TLS,
+		"cert_path":   state.CertPath,
+		"key_path":    state.KeyPath,
 	}, nil
 }
 
@@ -503,6 +637,36 @@ func logPathHandler(args []string) (interface{}, error) {
 	return settings.LogPath, nil
 }
 
+func setUploadDirHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	dir := resolvePath(args[0])
+	if dir == "" {
+		return nil, fmt.Errorf("upload directory cannot be empty")
+	}
+	if !pathInsideProject(dir) {
+		return nil, fmt.Errorf("upload directory must stay inside project")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	settings.UploadDirectory = dir
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return dir, nil
+}
+
+func uploadDirHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return settings.UploadDirectory, nil
+}
+
 func logTailHandler(args []string) (interface{}, error) {
 	lines := 40
 	if len(args) > 1 {
@@ -535,6 +699,28 @@ func logTailHandler(args []string) (interface{}, error) {
 		return strings.Join(allLines, "\n"), nil
 	}
 	return strings.Join(allLines[len(allLines)-lines:], "\n"), nil
+}
+
+func redirectHandler(args []string) (interface{}, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 arguments")
+	}
+	status := parseStatus(args[0], http.StatusFound)
+	location := strings.TrimSpace(args[1])
+	if location == "" {
+		return nil, fmt.Errorf("redirect location cannot be empty")
+	}
+	headers := map[string]string{"Location": location}
+	if len(args) == 3 {
+		extra, err := headersFromArg(args[2])
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range extra {
+			headers[k] = v
+		}
+	}
+	return encodeRouteResponse(status, "text/plain; charset=utf-8", "", headers)
 }
 
 func responseHandler(args []string) (interface{}, error) {
@@ -661,6 +847,177 @@ func renderFileHandler(args []string) (interface{}, error) {
 	return encodeRouteResponse(status, contentType, string(content), map[string]string{})
 }
 
+func renderTemplateHandler(args []string) (interface{}, error) {
+	if len(args) < 3 || len(args) > 4 {
+		return nil, fmt.Errorf("expected 3 or 4 arguments")
+	}
+	status := parseStatus(args[0], http.StatusOK)
+	templatePath, err := SQXArgString(args, 1)
+	if err != nil {
+		return nil, err
+	}
+	if templatePath == "" {
+		return nil, fmt.Errorf("template path cannot be empty")
+	}
+	if !filepath.IsAbs(templatePath) {
+		templatePath = resolvePath(templatePath)
+	}
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		return nil, err
+	}
+	data, err := SQXDecodeArg(args[2])
+	if err != nil {
+		return nil, err
+	}
+	rendered := renderTemplate(string(content), data)
+	headers := map[string]string{}
+	if len(args) == 4 {
+		headers, err = headersFromArg(args[3])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return encodeRouteResponse(status, "text/html; charset=utf-8", rendered, headers)
+}
+
+func downloadFileHandler(args []string) (interface{}, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 arguments")
+	}
+	status := parseStatus(args[0], http.StatusOK)
+	filePath, err := SQXArgString(args, 1)
+	if err != nil {
+		return nil, err
+	}
+	filePath = resolvePath(filePath)
+	if !pathInsideProject(filePath) {
+		return nil, fmt.Errorf("download path must stay inside project")
+	}
+	if !fileExists(filePath) {
+		return nil, fmt.Errorf("file not found: %s", filePath)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	downloadName := sanitizeFileName(filepath.Base(filePath))
+	if len(args) == 3 {
+		name := strings.TrimSpace(args[2])
+		if name != "" {
+			downloadName = sanitizeFileName(name)
+		}
+	}
+	if downloadName == "" {
+		downloadName = "download.bin"
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(filePath))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	headers := map[string]string{
+		"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s\"", downloadName),
+	}
+	return encodeRouteResponse(status, contentType, string(content), headers)
+}
+
+func uploadSaveHandler(args []string) (interface{}, error) {
+	if len(args) < 4 || len(args) > 5 {
+		return nil, fmt.Errorf("expected 4 or 5 arguments")
+	}
+	bodyFile := resolvePath(strings.TrimSpace(args[0]))
+	contentType := strings.TrimSpace(args[1])
+	fieldName := strings.TrimSpace(args[2])
+	outDir := resolvePath(strings.TrimSpace(args[3]))
+	if bodyFile == "" || !fileExists(bodyFile) {
+		return nil, fmt.Errorf("body file not found")
+	}
+	if contentType == "" {
+		return nil, fmt.Errorf("content type cannot be empty")
+	}
+	if fieldName == "" {
+		fieldName = "file"
+	}
+	if outDir == "" {
+		settings := loadSettings()
+		outDir = settings.UploadDirectory
+		if outDir == "" {
+			outDir = resolvePath("uploads")
+		}
+	}
+	if !pathInsideProject(outDir) {
+		return nil, fmt.Errorf("upload directory must stay inside project")
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return nil, err
+	}
+
+	body, err := os.ReadFile(bodyFile)
+	if err != nil {
+		return nil, err
+	}
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, fmt.Errorf("invalid multipart content type: %w", err)
+	}
+	if !strings.HasPrefix(strings.ToLower(mediaType), "multipart/") {
+		return nil, fmt.Errorf("content type must be multipart/*")
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, fmt.Errorf("multipart boundary missing")
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if part.FormName() != fieldName || part.FileName() == "" {
+			_ = part.Close()
+			continue
+		}
+		original := sanitizeFileName(part.FileName())
+		if original == "" {
+			original = "upload.bin"
+		}
+		random, err := randomToken(6)
+		if err != nil {
+			return nil, err
+		}
+		stored := random + "_" + original
+		target := filepath.Join(outDir, stored)
+		file, err := os.Create(target)
+		if err != nil {
+			return nil, err
+		}
+		size, copyErr := io.Copy(file, part)
+		closeErr := file.Close()
+		_ = part.Close()
+		if copyErr != nil {
+			return nil, copyErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		return map[string]interface{}{
+			"ok":            true,
+			"field":         fieldName,
+			"original_name": original,
+			"stored_name":   stored,
+			"path":          target,
+			"size":          size,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("multipart field %q not found", fieldName)
+}
+
 func parseFormHandler(args []string) (interface{}, error) {
 	if err := SQXRequireArgs(args, 1); err != nil {
 		return nil, err
@@ -734,6 +1091,266 @@ func headerGetHandler(args []string) (interface{}, error) {
 		return args[2], nil
 	}
 	return "", nil
+}
+
+func cookieGetHandler(args []string) (interface{}, error) {
+	if len(args) < 2 || len(args) > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 arguments")
+	}
+	headers, err := headersFromHeaderArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(args[1])
+	if name == "" {
+		return "", nil
+	}
+	value := cookieFromHeaders(headers, name)
+	if value != "" {
+		return value, nil
+	}
+	if len(args) == 3 {
+		return args[2], nil
+	}
+	return "", nil
+}
+
+func setSessionFileHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	path := resolvePath(args[0])
+	if path == "" {
+		return nil, fmt.Errorf("session file path cannot be empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	settings.SessionPath = path
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return path, nil
+}
+
+func sessionFileHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return settings.SessionPath, nil
+}
+
+func setSessionCookieHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(args[0])
+	if name == "" {
+		return nil, fmt.Errorf("session cookie cannot be empty")
+	}
+	settings := loadSettings()
+	settings.SessionCookie = name
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return name, nil
+}
+
+func sessionCookieHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return settings.SessionCookie, nil
+}
+
+func setSessionTTLHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	ttl, err := strconv.Atoi(strings.TrimSpace(args[0]))
+	if err != nil || ttl <= 0 {
+		return nil, fmt.Errorf("session ttl must be a positive integer")
+	}
+	settings := loadSettings()
+	settings.SessionTTL = ttl
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return int64(ttl), nil
+}
+
+func sessionTTLHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return int64(settings.SessionTTL), nil
+}
+
+func setSecureCookiesHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	value, err := SQXArgBool(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	settings.SecureCookies = value
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func secureCookiesHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return settings.SecureCookies, nil
+}
+
+func passwordHashHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	password := strings.TrimSpace(args[0])
+	if password == "" {
+		return nil, fmt.Errorf("password cannot be empty")
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+	return hash, nil
+}
+
+func passwordVerifyHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 2); err != nil {
+		return nil, err
+	}
+	password := args[0]
+	encoded := strings.TrimSpace(args[1])
+	if verifyPassword(password, encoded) {
+		return int64(1), nil
+	}
+	return int64(0), nil
+}
+
+func sessionCreateHandler(args []string) (interface{}, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return nil, fmt.Errorf("expected 1 or 2 arguments")
+	}
+	settings := loadSettings()
+	user, err := SQXDecodeArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	ttl := settings.SessionTTL
+	if len(args) == 2 {
+		parsed, convErr := strconv.Atoi(strings.TrimSpace(args[1]))
+		if convErr != nil || parsed <= 0 {
+			return nil, fmt.Errorf("session ttl must be a positive integer")
+		}
+		ttl = parsed
+	}
+	if ttl <= 0 {
+		ttl = 86400
+	}
+	id, err := randomToken(32)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	exp := now.Add(time.Duration(ttl) * time.Second)
+	record := SessionRecord{
+		ID:        id,
+		User:      user,
+		CreatedAt: now.Format(time.RFC3339),
+		ExpiresAt: exp.Format(time.RFC3339),
+	}
+
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+	store := loadSessionStore(settings.SessionPath)
+	cleanupExpiredSessions(&store)
+	store.Sessions[id] = record
+	if err := saveSessionStore(settings.SessionPath, store); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"ok":         true,
+		"id":         id,
+		"created_at": record.CreatedAt,
+		"expires_at": record.ExpiresAt,
+		"set_cookie": buildSessionCookie(settings, id, ttl, false),
+	}, nil
+}
+
+func sessionGetHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	headers, err := headersFromHeaderArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	sessionID := cookieFromHeaders(headers, settings.SessionCookie)
+	if sessionID == "" {
+		return map[string]interface{}{"ok": false, "id": "", "user": nil}, nil
+	}
+
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+	store := loadSessionStore(settings.SessionPath)
+	cleanupExpiredSessions(&store)
+	record, ok := store.Sessions[sessionID]
+	if !ok {
+		_ = saveSessionStore(settings.SessionPath, store)
+		return map[string]interface{}{"ok": false, "id": "", "user": nil}, nil
+	}
+	_ = saveSessionStore(settings.SessionPath, store)
+	return map[string]interface{}{
+		"ok":         true,
+		"id":         record.ID,
+		"user":       record.User,
+		"created_at": record.CreatedAt,
+		"expires_at": record.ExpiresAt,
+	}, nil
+}
+
+func sessionDestroyHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	headers, err := headersFromHeaderArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	sessionID := cookieFromHeaders(headers, settings.SessionCookie)
+
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+	store := loadSessionStore(settings.SessionPath)
+	if sessionID != "" {
+		delete(store.Sessions, sessionID)
+	}
+	cleanupExpiredSessions(&store)
+	if err := saveSessionStore(settings.SessionPath, store); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"ok":         true,
+		"set_cookie": buildSessionCookie(settings, "", 0, true),
+	}, nil
 }
 
 func dbOpenHandler(args []string) (interface{}, error) {
@@ -923,6 +1540,30 @@ func startWebServer(port string) {
 	}
 }
 
+func startWebServerTLS(port, certPath, keyPath string) {
+	settings := loadSettings()
+	if fromEnv := strings.TrimSpace(os.Getenv("SQU1DWEB_STATIC_ROOT")); fromEnv != "" {
+		settings.StaticRoot = fromEnv
+	}
+	if fromEnv := strings.TrimSpace(os.Getenv("SQU1DWEB_LOG_FILE")); fromEnv != "" {
+		settings.LogPath = fromEnv
+	}
+	staticRoot = settings.StaticRoot
+	logFilePath = settings.LogPath
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", genericHandler)
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: loggingMiddleware(mux),
+	}
+
+	logWebEvent("TLS server listening on :" + port)
+	if err := srv.ListenAndServeTLS(certPath, keyPath); err != nil && err != http.ErrServerClosed {
+		logWebEvent("TLS server error: " + err.Error())
+	}
+}
+
 func genericHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadRouteConfig()
 	path := r.URL.Path
@@ -1054,6 +1695,34 @@ func executeRouteHandler(handlerPath string, r *http.Request, requestBody []byte
 	}
 
 	headersJSON, _ := json.Marshal(flattenHeader(r.Header))
+	cookieHeader := r.Header.Get("Cookie")
+	if cookieHeader == "" {
+		cookies := r.Cookies()
+		if len(cookies) > 0 {
+			pairs := make([]string, 0, len(cookies))
+			for _, cookie := range cookies {
+				pairs = append(pairs, cookie.Name+"="+cookie.Value)
+			}
+			cookieHeader = strings.Join(pairs, "; ")
+		}
+	}
+	bodyFile := ""
+	if len(requestBody) > 0 {
+		tmpFile, err := os.CreateTemp("", "squ1dweb_body_*")
+		if err == nil {
+			if _, writeErr := tmpFile.Write(requestBody); writeErr == nil {
+				bodyFile = tmpFile.Name()
+			}
+			_ = tmpFile.Close()
+			if bodyFile == "" {
+				_ = os.Remove(tmpFile.Name())
+			}
+		}
+	}
+	if bodyFile != "" {
+		defer os.Remove(bodyFile)
+	}
+
 	cmd := exec.Command(squ1dccPath, absHandlerPath)
 	cmd.Dir = findProjectRoot(absHandlerPath)
 	cmd.Env = append(os.Environ(),
@@ -1061,6 +1730,9 @@ func executeRouteHandler(handlerPath string, r *http.Request, requestBody []byte
 		"HTTP_PATH="+r.URL.Path,
 		"HTTP_QUERY="+r.URL.RawQuery,
 		"HTTP_BODY="+string(requestBody),
+		"HTTP_BODY_FILE="+bodyFile,
+		"HTTP_CONTENT_TYPE="+r.Header.Get("Content-Type"),
+		"HTTP_COOKIE="+cookieHeader,
 		"HTTP_HEADERS_JSON="+string(headersJSON),
 	)
 	cmd.Stdin = bytes.NewReader(requestBody)
@@ -1160,9 +1832,14 @@ func loadSettings() EngineSettings {
 	defer settingsMutex.Unlock()
 
 	defaults := EngineSettings{
-		StaticRoot: resolvePath("static"),
-		LogPath:    resolvePath("squ1dweb.log"),
-		DBPath:     resolvePath("squ1dweb.db"),
+		StaticRoot:      resolvePath("static"),
+		LogPath:         resolvePath("squ1dweb.log"),
+		DBPath:          resolvePath("squ1dweb.db"),
+		SessionPath:     resolvePath("squ1dweb_sessions.json"),
+		SessionCookie:   "squ1d_session",
+		SessionTTL:      86400,
+		SecureCookies:   false,
+		UploadDirectory: resolvePath("uploads"),
 	}
 
 	data, err := os.ReadFile(settingsPath)
@@ -1182,9 +1859,23 @@ func loadSettings() EngineSettings {
 	if settings.DBPath == "" {
 		settings.DBPath = defaults.DBPath
 	}
+	if settings.SessionPath == "" {
+		settings.SessionPath = defaults.SessionPath
+	}
+	if settings.SessionCookie == "" {
+		settings.SessionCookie = defaults.SessionCookie
+	}
+	if settings.SessionTTL <= 0 {
+		settings.SessionTTL = defaults.SessionTTL
+	}
+	if settings.UploadDirectory == "" {
+		settings.UploadDirectory = defaults.UploadDirectory
+	}
 	settings.StaticRoot = resolvePath(settings.StaticRoot)
 	settings.LogPath = resolvePath(settings.LogPath)
 	settings.DBPath = resolvePath(settings.DBPath)
+	settings.SessionPath = resolvePath(settings.SessionPath)
+	settings.UploadDirectory = resolvePath(settings.UploadDirectory)
 	return settings
 }
 
@@ -1195,6 +1886,14 @@ func saveSettings(settings EngineSettings) error {
 	settings.StaticRoot = resolvePath(settings.StaticRoot)
 	settings.LogPath = resolvePath(settings.LogPath)
 	settings.DBPath = resolvePath(settings.DBPath)
+	settings.SessionPath = resolvePath(settings.SessionPath)
+	settings.UploadDirectory = resolvePath(settings.UploadDirectory)
+	if settings.SessionCookie == "" {
+		settings.SessionCookie = "squ1d_session"
+	}
+	if settings.SessionTTL <= 0 {
+		settings.SessionTTL = 86400
+	}
 
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
@@ -1264,6 +1963,47 @@ func parseHeaderJSON(raw string) (map[string]string, error) {
 	return out, nil
 }
 
+func headersFromHeaderArg(raw string) (map[string]string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return map[string]string{}, nil
+	}
+	if strings.HasPrefix(trimmed, "{") {
+		return parseHeaderJSON(trimmed)
+	}
+	return map[string]string{"Cookie": trimmed}, nil
+}
+
+func cookieFromHeaders(headers map[string]string, name string) string {
+	if strings.TrimSpace(name) == "" {
+		return ""
+	}
+	cookieHeader := ""
+	for hk, hv := range headers {
+		if strings.EqualFold(hk, "Cookie") {
+			cookieHeader = hv
+			break
+		}
+	}
+	if cookieHeader == "" {
+		return ""
+	}
+	for _, chunk := range strings.Split(cookieHeader, ";") {
+		part := strings.TrimSpace(chunk)
+		if part == "" {
+			continue
+		}
+		pieces := strings.SplitN(part, "=", 2)
+		if len(pieces) != 2 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(pieces[0]), name) {
+			return strings.TrimSpace(pieces[1])
+		}
+	}
+	return ""
+}
+
 func headersFromArg(raw string) (map[string]string, error) {
 	decoded, err := SQXDecodeArg(raw)
 	if err != nil {
@@ -1325,6 +2065,203 @@ func encodeRouteResponse(status int, contentType string, body interface{}, heade
 		return "", err
 	}
 	return string(data), nil
+}
+
+func renderTemplate(content string, data interface{}) string {
+	withRaw := templateRawExprPattern.ReplaceAllStringFunc(content, func(match string) string {
+		submatch := templateRawExprPattern.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return ""
+		}
+		value := resolveTemplateValue(data, submatch[1])
+		if value == nil {
+			return ""
+		}
+		return fmt.Sprint(value)
+	})
+	return templateExprPattern.ReplaceAllStringFunc(withRaw, func(match string) string {
+		submatch := templateExprPattern.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return ""
+		}
+		value := resolveTemplateValue(data, submatch[1])
+		if value == nil {
+			return ""
+		}
+		return html.EscapeString(fmt.Sprint(value))
+	})
+}
+
+func resolveTemplateValue(data interface{}, key string) interface{} {
+	if key == "" {
+		return nil
+	}
+	current := data
+	parts := strings.Split(key, ".")
+	for _, part := range parts {
+		switch node := current.(type) {
+		case map[string]interface{}:
+			val, ok := node[part]
+			if !ok {
+				return nil
+			}
+			current = val
+		default:
+			return nil
+		}
+	}
+	return current
+}
+
+func randomToken(length int) (string, error) {
+	if length <= 0 {
+		length = 16
+	}
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func sanitizeFileName(name string) string {
+	base := filepath.Base(strings.TrimSpace(name))
+	if base == "." || base == "" {
+		return ""
+	}
+	var builder strings.Builder
+	for _, r := range base {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			builder.WriteRune(r)
+		} else {
+			builder.WriteRune('_')
+		}
+	}
+	return strings.Trim(builder.String(), "._")
+}
+
+func loadSessionStore(path string) SessionStore {
+	store := SessionStore{Sessions: map[string]SessionRecord{}}
+	if path == "" {
+		return store
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return store
+	}
+	if err := json.Unmarshal(data, &store); err != nil {
+		return SessionStore{Sessions: map[string]SessionRecord{}}
+	}
+	if store.Sessions == nil {
+		store.Sessions = map[string]SessionRecord{}
+	}
+	return store
+}
+
+func saveSessionStore(path string, store SessionStore) error {
+	if path == "" {
+		return fmt.Errorf("session file path is empty")
+	}
+	if store.Sessions == nil {
+		store.Sessions = map[string]SessionRecord{}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(store, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func cleanupExpiredSessions(store *SessionStore) {
+	if store == nil || len(store.Sessions) == 0 {
+		return
+	}
+	now := time.Now().UTC()
+	for id, rec := range store.Sessions {
+		exp, err := time.Parse(time.RFC3339, rec.ExpiresAt)
+		if err != nil || !exp.After(now) {
+			delete(store.Sessions, id)
+		}
+	}
+}
+
+func buildSessionCookie(settings EngineSettings, token string, ttl int, clear bool) string {
+	name := settings.SessionCookie
+	if name == "" {
+		name = "squ1d_session"
+	}
+	base := fmt.Sprintf("%s=%s; Path=/; HttpOnly; SameSite=Lax", name, token)
+	if settings.SecureCookies {
+		base += "; Secure"
+	}
+	if clear {
+		return base + "; Max-Age=0"
+	}
+	if ttl <= 0 {
+		ttl = settings.SessionTTL
+	}
+	if ttl <= 0 {
+		ttl = 86400
+	}
+	return fmt.Sprintf("%s; Max-Age=%d", base, ttl)
+}
+
+func hashPassword(password string) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+	hash := derivePasswordHash(password, salt)
+	return fmt.Sprintf("sqsha256$v1$%s$%s", hex.EncodeToString(salt), hex.EncodeToString(hash)), nil
+}
+
+func verifyPassword(password, encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 4 {
+		return false
+	}
+	if parts[0] != "sqsha256" || parts[1] != "v1" {
+		return false
+	}
+	salt, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+	expected, err := hex.DecodeString(parts[3])
+	if err != nil {
+		return false
+	}
+	actual := derivePasswordHash(password, salt)
+	if len(expected) != len(actual) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(expected, actual) == 1
+}
+
+func derivePasswordHash(password string, salt []byte) []byte {
+	payload := make([]byte, 0, len(salt)+len(password))
+	payload = append(payload, salt...)
+	payload = append(payload, []byte(password)...)
+	sum := sha256.Sum256(payload)
+	digest := sum[:]
+
+	// Keep this reasonably expensive for brute-force resistance while staying
+	// lightweight enough for example usage.
+	const rounds = 120000
+	for i := 0; i < rounds; i++ {
+		mix := make([]byte, 0, len(salt)+len(digest))
+		mix = append(mix, salt...)
+		mix = append(mix, digest...)
+		step := sha256.Sum256(mix)
+		digest = step[:]
+	}
+
+	out := make([]byte, len(digest))
+	copy(out, digest)
+	return out
 }
 
 func resolvePath(path string) string {
@@ -1457,4 +2394,26 @@ func fileExists(path string) bool {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func pathInsideProject(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	root := projectRoot
+	if root == "" {
+		root = detectProjectRoot()
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	if absPath == absRoot {
+		return true
+	}
+	return strings.HasPrefix(absPath, absRoot+string(os.PathSeparator))
 }

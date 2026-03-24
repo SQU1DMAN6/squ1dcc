@@ -1,0 +1,23 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var session = http.session_get(os.env("HTTP_COOKIE"))
+if (session.id == "") {
+	io.echo(http.redirect(302, "/login?msg=Please+login+first"))
+} el {
+	var path = os.env("HTTP_PATH")
+	var parts = string.sepr(path, "/")
+	var name = ""
+	if (array.cat(parts) > 0) {
+		name = parts[array.cat(parts) - 1]
+	}
+	if (name == "") {
+		io.echo(http.redirect(302, "/"))
+	} el {
+		var response = http.download_file(200, "uploads/" + name, name)
+		if (type.tp(response) == "Error" or type.tp(response) == "ERROR") {
+			io.echo(http.response_text(404, "File not found"))
+		} el {
+			io.echo(response)
+		}
+	}
+}

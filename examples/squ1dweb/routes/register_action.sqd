@@ -1,0 +1,26 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var raw = os.env("HTTP_BODY")
+var username = http.form_get(raw, "username", "")
+var password = http.form_get(raw, "password", "")
+
+if (username == "" or password == "") {
+	io.echo(http.redirect(302, "/register?msg=Missing+username+or+password"))
+} el {
+	var existing = http.db_query("SELECT id FROM users WHERE username = ?", [username])
+	if (type.tp(existing) == "Array" and array.cat(existing) > 0) {
+		io.echo(http.redirect(302, "/register?msg=Username+already+exists"))
+	} el {
+		var passwordHash = http.password_hash(password)
+		if (type.tp(passwordHash) == "Error" or type.tp(passwordHash) == "ERROR") {
+			io.echo(http.redirect(302, "/register?msg=Registration+failed"))
+		} el {
+			var inserted = http.db_exec("INSERT INTO users (username, password) VALUES (?, ?)", [username, passwordHash])
+			if (type.tp(inserted) == "Error" or type.tp(inserted) == "ERROR") {
+				io.echo(http.redirect(302, "/register?msg=Registration+failed"))
+			} el {
+				io.echo(http.redirect(302, "/login?msg=Registered.+Please+login"))
+			}
+		}
+	}
+}

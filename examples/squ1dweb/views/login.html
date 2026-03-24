@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQU1D Web - Login</title>
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>Login</h1>
+      <p class="muted">Sign in to access your dashboard.</p>
+      <p class="notice"><?= message ?></p>
+      <form method="post" action="/login">
+        <label>Username</label>
+        <input name="username" type="text" required>
+        <label>Password</label>
+        <input name="password" type="password" required>
+        <button type="submit">Login</button>
+      </form>
+      <p class="footer">No account yet? <a href="/register">Register</a></p>
+    </section>
+  </main>
+</body>
+</html>

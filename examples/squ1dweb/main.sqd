@@ -4,28 +4,52 @@ io.echo("Starting SQU1D++ Web Server...\n")
 
 http.set_static_root("static")
 http.set_log_file("squ1dweb.log")
+http.set_upload_dir("uploads")
+http.set_session_file("squ1dweb_sessions.json")
+http.set_session_cookie("squ1d_session")
+http.set_session_ttl(86400)
+http.set_secure_cookies(false)
+
 http.db_open("squ1dweb.db")
 http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", [])
+http.db_exec("CREATE TABLE IF NOT EXISTS uploads (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, stored_name TEXT, original_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)", [])
 
-http.set_route("GET", "/", "routes/index.sqd")
-http.set_route("POST", "/api/register", "routes/api_register.sqd")
-http.set_route("POST", "/api/login", "routes/api_login.sqd")
-http.set_route("GET", "/api/dashboard", "routes/api_dashboard.sqd")
-http.set_route("GET", "/api/verify", "routes/api_verify.sqd")
+http.clear_routes()
+http.set_route("GET", "/", "routes/dashboard_page.sqd")
+http.set_route("GET", "/login", "routes/login_page.sqd")
+http.set_route("POST", "/login", "routes/login_action.sqd")
+http.set_route("GET", "/register", "routes/register_page.sqd")
+http.set_route("POST", "/register", "routes/register_action.sqd")
+http.set_route("POST", "/logout", "routes/logout_action.sqd")
+http.set_route("POST", "/upload", "routes/upload_action.sqd")
+http.set_route("GET", "/download/*", "routes/download_action.sqd")
 http.set_route("GET", "/static/*", "static")
 
 var port = "8080"
 
-var result = http.server_start(port)
+var result = ""
+var useTLS = io.read("Use TLS? [1/0] ")
+if (useTLS == "1") {
+	var cert = io.read("Certificate: ")
+	var key = io.read("Key: ")
+	result = http.server_start_tls(port, cert, key)
+} el {
+	result = http.server_start(port)
+}
 io.echo(result, "\n")
-io.echo("Open http://127.0.0.1:" + port + " in your browser\n")
+
+if (useTLS == "1") {
+	io.echo("Open https://localhost:" + port + " in your browser\n")
+} el {
+	io.echo("Open http://localhost:" + port + " in your browser\n")
+}
 io.echo("Log file: ", http.log_path(), "\n")
+io.echo("Use Ctrl+C to stop server\n")
 
 while (true) {
-	var command = io.read("> ")
-	if (command == "stop") {
-		var result = http.server_stop()
-		io.echo(result, "\n")
+	if (keyboard.read() == "KeyCtrl+C") {
 		break
 	}
 }
+
+http.server_stop()

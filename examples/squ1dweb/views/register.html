@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQU1D Web - Register</title>
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>Create Account</h1>
+      <p class="muted">Register to start using SQU1D Web.</p>
+      <p class="notice"><?= message ?></p>
+      <form method="post" action="/register">
+        <label>Username</label>
+        <input name="username" type="text" required>
+        <label>Password</label>
+        <input name="password" type="password" required>
+        <button type="submit">Register</button>
+      </form>
+      <p class="footer">Already registered? <a href="/login">Login</a></p>
+    </section>
+  </main>
+</body>
+</html>

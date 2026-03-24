@@ -1,0 +1,112 @@
+:root {
+  --bg-1: #ecf4ff;
+  --bg-2: #f9fbff;
+  --card: #ffffff;
+  --line: #d5deeb;
+  --ink: #1f2a3d;
+  --muted: #5c6880;
+  --accent: #0b63ce;
+  --danger: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top left, var(--bg-1), var(--bg-2));
+}
+
+.container {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.07);
+  padding: 20px;
+}
+
+.wide {
+  min-height: 420px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+input,
+button {
+  width: 100%;
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+}
+
+button {
+  width: auto;
+  border-color: transparent;
+  color: white;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+.notice {
+  min-height: 20px;
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.footer {
+  margin-top: 16px;
+  color: var(--muted);
+}
+
+.panel {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.files {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.files li {
+  margin-bottom: 6px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

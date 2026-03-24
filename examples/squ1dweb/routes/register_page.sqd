@@ -1,0 +1,4 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var msg = http.form_get(os.env("HTTP_QUERY"), "msg", "")
+io.echo(http.render_template(200, "views/register.html", {message: msg}))
