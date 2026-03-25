@@ -1,0 +1,81 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "dashboard_page"
+    },
+    {
+      "method": "GET",
+      "path": "/download/*",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "download_get"
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/auth_controller.sqd",
+      "action": "login_page"
+    },
+    {
+      "method": "POST",
+      "path": "/login",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/auth_controller.sqd",
+      "action": "login_post"
+    },
+    {
+      "method": "POST",
+      "path": "/logout",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/auth_controller.sqd",
+      "action": "logout_post"
+    },
+    {
+      "method": "GET",
+      "path": "/register",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/auth_controller.sqd",
+      "action": "register_page"
+    },
+    {
+      "method": "POST",
+      "path": "/register",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/auth_controller.sqd",
+      "action": "register_post"
+    },
+    {
+      "method": "GET",
+      "path": "/static/*",
+      "handler": "static"
+    },
+    {
+      "method": "POST",
+      "path": "/todo/add",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "todo_add_post"
+    },
+    {
+      "method": "POST",
+      "path": "/todo/complete",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "todo_complete_post"
+    },
+    {
+      "method": "POST",
+      "path": "/todo/delete",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "todo_delete_post"
+    },
+    {
+      "method": "POST",
+      "path": "/upload",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "upload_post"
+    },
+    {
+      "method": "POST",
+      "path": "/upload/delete",
+      "handler": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/controllers/web_controller.sqd",
+      "action": "upload_delete_post"
+    }
+  ]
+}

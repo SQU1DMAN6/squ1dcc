@@ -43,12 +43,13 @@ last_segment >> (value) {
 	return parts[array.cat(parts) - 1]
 }
 
-render_dashboard >> (username, title, message, error, todosHtml, filesHtml) {
+render_dashboard >> (username, title, message, error, todosHtml, filesHtml, csrfToken) {
 	io.echo(http.render_template(200, "views/dashboard.html", {
 		title: title,
 		message: message,
 		error: error,
 		username: username,
+		csrf_token: csrfToken,
 		todos_html: todosHtml,
 		files_html: filesHtml
 	}))
@@ -60,6 +61,10 @@ dashboard_page >> () {
 		io.echo(http.redirect(302, "/login"))
 	} el {
 		var username = current_username(session)
+		var csrfToken = ""
+		if (type.tp(session.csrf_token) == "String") {
+			csrfToken = session.csrf_token
+		}
 		ensure_todo_table()
 
 		var title = "Dashboard"
@@ -93,9 +98,9 @@ dashboard_page >> () {
 				}
 				var completeBtn = ""
 				if (todo.done != 1) {
-					completeBtn = "<form method=\"post\" action=\"/todo/complete\" class=\"inline\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button type=\"submit\">Complete</button></form>"
+					completeBtn = "<form method=\"post\" action=\"/todo/complete\" class=\"inline\"><input type=\"hidden\" name=\"csrf_token\" value=\"" + csrfToken + "\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button type=\"submit\">Complete</button></form>"
 				}
-				var deleteBtn = "<form method=\"post\" action=\"/todo/delete\" class=\"inline\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
+				var deleteBtn = "<form method=\"post\" action=\"/todo/delete\" class=\"inline\"><input type=\"hidden\" name=\"csrf_token\" value=\"" + csrfToken + "\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
 				todosHtml = todosHtml + "<li><span class=\"todo-title\">" + marker + " " + todoTitle + "</span><span class=\"actions\">" + completeBtn + deleteBtn + "</span></li>"
 				i = i + 1
 			}
@@ -111,13 +116,13 @@ dashboard_page >> () {
 				var fileId = type.d2s(row.id)
 				var original = http.escape_html(row.original_name)
 				var openLink = "<a href=\"/download/" + fileId + "\">" + original + "</a>"
-				var deleteBtn = "<form method=\"post\" action=\"/upload/delete\" class=\"inline\"><input type=\"hidden\" name=\"upload_id\" value=\"" + fileId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
+				var deleteBtn = "<form method=\"post\" action=\"/upload/delete\" class=\"inline\"><input type=\"hidden\" name=\"csrf_token\" value=\"" + csrfToken + "\"><input type=\"hidden\" name=\"upload_id\" value=\"" + fileId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
 				filesHtml = filesHtml + "<li><span class=\"file-link\">" + openLink + "</span><span class=\"actions\">" + deleteBtn + "</span></li>"
 				f = f + 1
 			}
 		}
 
-		render_dashboard(username, title, message, error, todosHtml, filesHtml)
+		render_dashboard(username, title, message, error, todosHtml, filesHtml, csrfToken)
 	}
 }
 

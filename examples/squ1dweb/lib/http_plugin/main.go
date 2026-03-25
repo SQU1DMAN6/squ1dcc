@@ -3,14 +3,19 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"html"
 	"io"
+	"math/big"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -58,6 +63,8 @@ type EngineSettings struct {
 	SessionCookie   string `json:"session_cookie"`
 	SessionTTL      int    `json:"session_ttl_seconds"`
 	SecureCookies   bool   `json:"secure_cookies"`
+	ForceHTTPS      bool   `json:"force_https"`
+	CSRFHeader      string `json:"csrf_header"`
 	UploadDirectory string `json:"upload_directory"`
 }
 
@@ -76,9 +83,28 @@ type SessionRecord struct {
 	ID        string      `json:"id"`
 	User      interface{} `json:"user"`
 	Flash     interface{} `json:"flash,omitempty"`
+	CsrfToken string      `json:"csrf_token,omitempty"`
 	CreatedAt string      `json:"created_at"`
 	ExpiresAt string      `json:"expires_at"`
 }
+
+type rateLimitEntry struct {
+	count       int
+	windowStart time.Time
+}
+
+const (
+	maxRequestBodyBytes = 8 * 1024
+	maxQueryLength      = 4096
+	rateLimitRequests   = 20
+	rateLimitWindow     = time.Minute
+)
+
+var (
+	caCertFile string
+	certFile   string
+	keyFile    string
+)
 
 type SessionStore struct {
 	Sessions map[string]SessionRecord `json:"sessions"`
@@ -104,15 +130,17 @@ var (
 	stateDirPath    = ""
 	requestCtxDir   = ""
 
-	routeMutex    sync.RWMutex
-	settingsMutex sync.Mutex
-	sessionMutex  sync.Mutex
-	logMutex      sync.Mutex
-
-	squ1dccPath = os.Getenv("SQU1DCC_BIN")
-	projectRoot = ""
-	staticRoot  = ""
-	logFilePath = ""
+	routeMutex     sync.RWMutex
+	settingsMutex  sync.Mutex
+	sessionMutex   sync.Mutex
+	logMutex       sync.Mutex
+	ratelimitMutex sync.Mutex
+	ratelimitMap   = map[string]*rateLimitEntry{}
+	projectRoot    = ""
+	staticRoot     = "/home/qchef/Documents/squ1dcc/examples/squ1dweb/static"
+	logFilePath    = ""
+	squ1dccPath    = os.Getenv("SQU1DCC_BIN")
+	settings       = EngineSettings{StaticRoot: staticRoot, DBPath: "squ1dweb.db", SecureCookies: true, SessionCookie: "squ1dsession", SessionTTL: 900}
 
 	templateRawExprPattern = regexp.MustCompile(`<\?!=\s*([a-zA-Z0-9_.-]+)\s*\?>`)
 	templateExprPattern    = regexp.MustCompile(`<\?=\s*([a-zA-Z0-9_.-]+)\s*\?>`)
@@ -135,6 +163,10 @@ func init() {
 	requestCtxDir = filepath.Join(stateDirPath, "request_ctx")
 	_ = os.MkdirAll(stateDirPath, 0o755)
 	_ = os.MkdirAll(requestCtxDir, 0o755)
+
+	caCertFile = filepath.Join(stateDirPath, "squ1dweb_ca.crt")
+	certFile = filepath.Join(stateDirPath, "squ1dweb.crt")
+	keyFile = filepath.Join(stateDirPath, "squ1dweb.key")
 }
 
 func main() {
@@ -171,6 +203,9 @@ func main() {
 		SQXMethod{Name: "set_static_root", Return: SQXReturnString, Handle: setStaticRootHandler},
 		SQXMethod{Name: "static_root", Return: SQXReturnString, Handle: staticRootHandler},
 		SQXMethod{Name: "set_log_file", Return: SQXReturnString, Handle: setLogFileHandler},
+		SQXMethod{Name: "set_force_https", Return: SQXReturnBool, Handle: setForceHTTPSHandler},
+		SQXMethod{Name: "force_https", Return: SQXReturnBool, Handle: forceHTTPSHandler},
+		SQXMethod{Name: "generate_cert", Return: SQXReturnString, Handle: generateCertHandler},
 		SQXMethod{Name: "log_path", Return: SQXReturnString, Handle: logPathHandler},
 		SQXMethod{Name: "log_tail", Return: SQXReturnString, Handle: logTailHandler},
 		SQXMethod{Name: "set_upload_dir", Return: SQXReturnString, Handle: setUploadDirHandler},
@@ -417,13 +452,20 @@ func serverStartTLSHandler(args []string) (interface{}, error) {
 	if port == "" {
 		return nil, fmt.Errorf("port cannot be empty")
 	}
-	certPath := resolvePath(args[1])
-	keyPath := resolvePath(args[2])
-	if !fileExists(certPath) {
-		return nil, fmt.Errorf("certificate file not found: %s", certPath)
+	certPath := strings.TrimSpace(args[1])
+	keyPath := strings.TrimSpace(args[2])
+	if strings.EqualFold(certPath, "auto") {
+		certPath = caCertFile
 	}
-	if !fileExists(keyPath) {
-		return nil, fmt.Errorf("key file not found: %s", keyPath)
+	if strings.EqualFold(keyPath, "auto") {
+		keyPath = keyFile
+	}
+	certPath = resolvePath(certPath)
+	keyPath = resolvePath(keyPath)
+	if !fileExists(certPath) || !fileExists(keyPath) {
+		if err := generateSelfSignedCert(certPath, keyPath, "localhost"); err != nil {
+			return nil, fmt.Errorf("could not generate self-signed certs: %w", err)
+		}
 	}
 
 	state := loadServerState()
@@ -1380,6 +1422,60 @@ func secureCookiesHandler(args []string) (interface{}, error) {
 	return settings.SecureCookies, nil
 }
 
+func setForceHTTPSHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 1); err != nil {
+		return nil, err
+	}
+	value, err := SQXArgBool(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	settings.ForceHTTPS = value
+	if settings.CSRFHeader == "" {
+		settings.CSRFHeader = "X-CSRF-Token"
+	}
+	if err := saveSettings(settings); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func forceHTTPSHandler(args []string) (interface{}, error) {
+	if err := SQXRequireArgs(args, 0); err != nil {
+		return nil, err
+	}
+	settings := loadSettings()
+	return settings.ForceHTTPS, nil
+}
+
+func generateCertHandler(args []string) (interface{}, error) {
+	certPath := certFile
+	keyPath := keyFile
+	host := "localhost"
+
+	if len(args) >= 1 {
+		requested := strings.TrimSpace(args[0])
+		if requested != "" && !strings.EqualFold(requested, "auto") {
+			certPath = resolvePath(requested)
+		}
+	}
+	if len(args) >= 2 {
+		requested := strings.TrimSpace(args[1])
+		if requested != "" && !strings.EqualFold(requested, "auto") {
+			keyPath = resolvePath(requested)
+		}
+	}
+	if len(args) >= 3 {
+		host = strings.TrimSpace(args[2])
+	}
+
+	if err := generateSelfSignedCert(certPath, keyPath, host); err != nil {
+		return nil, err
+	}
+	return fmt.Sprintf("cert generated at %s, key generated at %s", certPath, keyPath), nil
+}
+
 func passwordHashHandler(args []string) (interface{}, error) {
 	if err := SQXRequireArgs(args, 1); err != nil {
 		return nil, err
@@ -1431,11 +1527,16 @@ func sessionCreateHandler(args []string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	csrf, err := randomToken(32)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(ttl) * time.Second)
 	record := SessionRecord{
 		ID:        id,
 		User:      user,
+		CsrfToken: csrf,
 		CreatedAt: now.Format(time.RFC3339),
 		ExpiresAt: exp.Format(time.RFC3339),
 	}
@@ -1454,6 +1555,7 @@ func sessionCreateHandler(args []string) (interface{}, error) {
 		"id":         id,
 		"created_at": record.CreatedAt,
 		"expires_at": record.ExpiresAt,
+		"csrf_token": record.CsrfToken,
 		"set_cookie": buildSessionCookie(settings, id, ttl, false),
 	}, nil
 }
@@ -1486,6 +1588,7 @@ func sessionGetHandler(args []string) (interface{}, error) {
 		"ok":         true,
 		"id":         record.ID,
 		"user":       record.User,
+		"csrf_token": record.CsrfToken,
 		"created_at": record.CreatedAt,
 		"expires_at": record.ExpiresAt,
 	}, nil
@@ -1764,7 +1867,7 @@ func startWebServer(port string) {
 	defer ln.Close()
 
 	logWebEvent("Server listening on :" + port)
-	srv := &http.Server{Handler: loggingMiddleware(mux)}
+	srv := &http.Server{Handler: loggingMiddleware(securityMiddleware(mux))}
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		logWebEvent("Server error: " + err.Error())
 	}
@@ -1779,7 +1882,7 @@ func startWebServerTLS(port, certPath, keyPath string) {
 	mux.HandleFunc("/", genericHandler)
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: loggingMiddleware(mux),
+		Handler: loggingMiddleware(securityMiddleware(mux)),
 	}
 
 	logWebEvent("TLS server listening on :" + port)
@@ -1803,7 +1906,23 @@ func genericHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
+	bodyReader := io.LimitReader(r.Body, maxRequestBodyBytes+1)
+	body, err := io.ReadAll(bodyReader)
+	if err != nil {
+		logWebEvent("Request body read error: " + err.Error())
+		http.Error(w, "Invalid or too large request body", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxRequestBodyBytes {
+		logWebEvent("Request body too large")
+		http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	if !enforceRequestSecurity(w, r, body) {
+		return
+	}
+
 	resp, err := executeRouteHandler(*matched, r, body)
 	if err != nil {
 		logWebEvent("Route handler error: " + err.Error())
@@ -2070,6 +2189,146 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func securityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !enforcePreRequestSecurity(w, r) {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func getSessionFromRequest(r *http.Request) (SessionRecord, bool) {
+	settings := loadSettings()
+	cookie, err := r.Cookie(settings.SessionCookie)
+	if err != nil || cookie == nil {
+		return SessionRecord{}, false
+	}
+	sessionID := strings.TrimSpace(cookie.Value)
+	if sessionID == "" {
+		return SessionRecord{}, false
+	}
+
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
+	store := loadSessionStore(settings.SessionPath)
+	cleanupExpiredSessions(&store)
+	record, ok := store.Sessions[sessionID]
+	if !ok {
+		_ = saveSessionStore(settings.SessionPath, store)
+		return SessionRecord{}, false
+	}
+	_ = saveSessionStore(settings.SessionPath, store)
+	return record, true
+}
+
+func isSafeMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, "TRACE":
+		return true
+	default:
+		return false
+	}
+}
+
+func secureCompare(a, b string) bool {
+	if a == "" || b == "" || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func parseCSRFTokenFromBody(contentType string, body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	baseType := strings.SplitN(contentType, ";", 2)[0]
+	baseType = strings.TrimSpace(baseType)
+	if baseType == "application/x-www-form-urlencoded" {
+		values, err := url.ParseQuery(string(body))
+		if err == nil {
+			return values.Get("csrf_token")
+		}
+	}
+	return ""
+}
+
+func enforcePreRequestSecurity(w http.ResponseWriter, r *http.Request) bool {
+	settings := loadSettings()
+
+	if settings.ForceHTTPS && r.TLS == nil {
+		host := r.Host
+		if host == "" {
+			host = "localhost"
+		}
+		redirectURL := "https://" + host + r.URL.RequestURI()
+		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
+		return false
+	}
+
+	if len(r.URL.RawQuery) > maxQueryLength {
+		http.Error(w, "Query string too long", http.StatusRequestURITooLong)
+		return false
+	}
+
+	clientIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(clientIP); err == nil {
+		clientIP = host
+	}
+	key := fmt.Sprintf("%s:%s:%s", clientIP, r.Method, r.URL.Path)
+
+	ratelimitMutex.Lock()
+	entry, exists := ratelimitMap[key]
+	if !exists || time.Since(entry.windowStart) > rateLimitWindow {
+		entry = &rateLimitEntry{count: 0, windowStart: time.Now()}
+		ratelimitMap[key] = entry
+	}
+	entry.count++
+	if entry.count > rateLimitRequests {
+		ratelimitMutex.Unlock()
+		logWebEvent(fmt.Sprintf("Rate limit exceeded for %s", key))
+		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		return false
+	}
+	ratelimitMutex.Unlock()
+
+	return true
+}
+
+func enforceRequestSecurity(w http.ResponseWriter, r *http.Request, body []byte) bool {
+	if !enforcePreRequestSecurity(w, r) {
+		return false
+	}
+
+	if isSafeMethod(r.Method) {
+		return true
+	}
+
+	// allow unauthenticated login/register attempts for initial actions
+	if r.Method == http.MethodPost && (r.URL.Path == "/login" || r.URL.Path == "/register") {
+		return true
+	}
+
+	settings := loadSettings()
+	session, found := getSessionFromRequest(r)
+	if !found || session.ID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+
+	token := r.Header.Get(settings.CSRFHeader)
+	if token == "" {
+		token = parseCSRFTokenFromBody(r.Header.Get("Content-Type"), body)
+	}
+
+	if !secureCompare(token, session.CsrfToken) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return false
+	}
+
+	return true
+}
+
 func logWebEvent(msg string) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
@@ -2089,6 +2348,8 @@ func loadSettings() EngineSettings {
 		SessionCookie:   "squ1d_session",
 		SessionTTL:      86400,
 		SecureCookies:   false,
+		ForceHTTPS:      false,
+		CSRFHeader:      "X-CSRF-Token",
 		UploadDirectory: resolvePath("uploads"),
 	}
 
@@ -2120,6 +2381,9 @@ func loadSettings() EngineSettings {
 	}
 	if settings.UploadDirectory == "" {
 		settings.UploadDirectory = defaults.UploadDirectory
+	}
+	if settings.CSRFHeader == "" {
+		settings.CSRFHeader = defaults.CSRFHeader
 	}
 	settings.StaticRoot = resolvePath(settings.StaticRoot)
 	settings.LogPath = resolvePath(settings.LogPath)
@@ -2714,6 +2978,70 @@ func detectProjectRoot() string {
 	}
 
 	return start
+}
+
+func generateSelfSignedCert(certPath, keyPath, host string) error {
+	if host == "" {
+		host = "localhost"
+	}
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	tmpl := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"SQU1D Web"},
+			CommonName:   host,
+		},
+		NotBefore:             now.Add(-5 * time.Minute),
+		NotAfter:              now.Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		tmpl.IPAddresses = []net.IP{ip}
+	} else {
+		tmpl.DNSNames = []string{host}
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+
+	certPEM := &bytes.Buffer{}
+	if err := pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return err
+	}
+	keyPEM := &bytes.Buffer{}
+	if err := pem.Encode(keyPEM, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o755); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(certPath, certPEM.Bytes(), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(keyPath, keyPEM.Bytes(), 0o600); err != nil {
+		return err
+	}
+	return nil
 }
 
 func fileExists(path string) bool {

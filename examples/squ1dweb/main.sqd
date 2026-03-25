@@ -26,6 +26,8 @@ http.db_exec("CREATE TABLE IF NOT EXISTS uploads (id INTEGER PRIMARY KEY AUTOINC
 sql.open(http.db_path())
 sql.exec("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, title TEXT, done INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)", [])
 
+http.generate_cert("auto", "auto", "localhost")
+
 http.clear_routes()
 http.set_route("GET", "/", "controllers/web_controller.sqd", "dashboard_page")
 http.set_route("GET", "/login", "controllers/auth_controller.sqd", "login_page")
@@ -42,23 +44,13 @@ http.set_route("GET", "/download/*", "controllers/web_controller.sqd", "download
 http.set_route("GET", "/static/*", "static")
 
 var result = ""
-var useTLS = io.read("Use TLS? [1/0] ")
-if (useTLS == "1") {
-	http.set_secure_cookies(true)
-	var cert = io.read("Certificate: ")
-	var key = io.read("Key: ")
-	result = http.server_start_tls(cfgPort, cert, key)
-} el {
-	http.set_secure_cookies(false)
-	result = http.server_start(cfgPort)
-}
+http.set_force_https(true)
+http.set_secure_cookies(true)
+result = http.server_start_tls(cfgPort, "auto", "auto")
 io.echo(result, "\n")
 
-if (useTLS == "1") {
-	io.echo("Open https://localhost:" + cfgPort + " in your browser\n")
-} el {
-	io.echo("Open http://localhost:" + cfgPort + " in your browser\n")
-}
+io.echo("Open https://localhost:" + cfgPort + " in your browser\n")
+
 io.echo("Log file: ", http.log_path(), "\n")
 io.echo("Use Ctrl+C to stop server\n")
 

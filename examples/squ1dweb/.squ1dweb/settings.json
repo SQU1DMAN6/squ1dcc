@@ -1,0 +1,12 @@
+{
+  "static_root": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/static",
+  "log_path": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/squ1dweb.log",
+  "db_path": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/squ1dweb.db",
+  "session_path": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/squ1dweb_sessions.json",
+  "session_cookie": "squ1d_session",
+  "session_ttl_seconds": 7776000,
+  "secure_cookies": true,
+  "force_https": true,
+  "csrf_header": "X-CSRF-Token",
+  "upload_directory": "/home/qchef/Documents/squ1dcc/examples/squ1dweb/uploads"
+}
