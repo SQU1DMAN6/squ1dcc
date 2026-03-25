@@ -1,47 +1,63 @@
 pkg.include("lib/http_plugin/http.sqx", "http")
+pkg.include("lib/sql_plugin/sql.sqx", "sql")
 
 io.echo("Starting SQU1D++ Web Server...\n")
 
-http.set_static_root("static")
-http.set_log_file("squ1dweb.log")
-http.set_upload_dir("uploads")
-http.set_session_file("squ1dweb_sessions.json")
-http.set_session_cookie("squ1d_session")
-http.set_session_ttl(86400)
-http.set_secure_cookies(false)
+var cfgPort = "8080"
+var cfgStaticRoot = "static"
+var cfgLogFile = "squ1dweb.log"
+var cfgUploadDir = "uploads"
+var cfgSessionFile = "squ1dweb_sessions.json"
+var cfgSessionCookie = "squ1d_session"
+var cfgSessionTTL = 7776000
+var cfgDB = "squ1dweb.db"
 
-http.db_open("squ1dweb.db")
+http.set_static_root(cfgStaticRoot)
+http.set_log_file(cfgLogFile)
+http.set_upload_dir(cfgUploadDir)
+http.set_session_file(cfgSessionFile)
+http.set_session_cookie(cfgSessionCookie)
+http.set_session_ttl(cfgSessionTTL)
+
+http.db_open(cfgDB)
 http.db_exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", [])
 http.db_exec("CREATE TABLE IF NOT EXISTS uploads (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, stored_name TEXT, original_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)", [])
 
-http.clear_routes()
-http.set_route("GET", "/", "routes/dashboard_page.sqd")
-http.set_route("GET", "/login", "routes/login_page.sqd")
-http.set_route("POST", "/login", "routes/login_action.sqd")
-http.set_route("GET", "/register", "routes/register_page.sqd")
-http.set_route("POST", "/register", "routes/register_action.sqd")
-http.set_route("POST", "/logout", "routes/logout_action.sqd")
-http.set_route("POST", "/upload", "routes/upload_action.sqd")
-http.set_route("GET", "/download/*", "routes/download_action.sqd")
-http.set_route("GET", "/static/*", "static")
+sql.open(http.db_path())
+sql.exec("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, title TEXT, done INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)", [])
 
-var port = "8080"
+http.clear_routes()
+http.set_route("GET", "/", "controllers/web_controller.sqd", "dashboard_page")
+http.set_route("GET", "/login", "controllers/auth_controller.sqd", "login_page")
+http.set_route("POST", "/login", "controllers/auth_controller.sqd", "login_post")
+http.set_route("GET", "/register", "controllers/auth_controller.sqd", "register_page")
+http.set_route("POST", "/register", "controllers/auth_controller.sqd", "register_post")
+http.set_route("POST", "/logout", "controllers/auth_controller.sqd", "logout_post")
+http.set_route("POST", "/upload", "controllers/web_controller.sqd", "upload_post")
+http.set_route("POST", "/upload/delete", "controllers/web_controller.sqd", "upload_delete_post")
+http.set_route("POST", "/todo/add", "controllers/web_controller.sqd", "todo_add_post")
+http.set_route("POST", "/todo/complete", "controllers/web_controller.sqd", "todo_complete_post")
+http.set_route("POST", "/todo/delete", "controllers/web_controller.sqd", "todo_delete_post")
+http.set_route("GET", "/download/*", "controllers/web_controller.sqd", "download_get")
+http.set_route("GET", "/static/*", "static")
 
 var result = ""
 var useTLS = io.read("Use TLS? [1/0] ")
 if (useTLS == "1") {
+	http.set_secure_cookies(true)
 	var cert = io.read("Certificate: ")
 	var key = io.read("Key: ")
-	result = http.server_start_tls(port, cert, key)
+	result = http.server_start_tls(cfgPort, cert, key)
 } el {
-	result = http.server_start(port)
+	http.set_secure_cookies(false)
+	result = http.server_start(cfgPort)
 }
 io.echo(result, "\n")
 
 if (useTLS == "1") {
-	io.echo("Open https://localhost:" + port + " in your browser\n")
+	io.echo("Open https://localhost:" + cfgPort + " in your browser\n")
 } el {
-	io.echo("Open http://localhost:" + port + " in your browser\n")
+	io.echo("Open http://localhost:" + cfgPort + " in your browser\n")
 }
 io.echo("Log file: ", http.log_path(), "\n")
 io.echo("Use Ctrl+C to stop server\n")
@@ -50,6 +66,7 @@ while (true) {
 	if (keyboard.read() == "KeyCtrl+C") {
 		break
 	}
+	time.sleep(50)
 }
 
 http.server_stop()

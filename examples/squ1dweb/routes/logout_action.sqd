@@ -1,4 +1,0 @@
-pkg.include("lib/http_plugin/http.sqx", "http")
-
-var session = http.session_destroy(os.env("HTTP_COOKIE"))
-io.echo(http.redirect(302, "/login?msg=Logged+out", {"Set-Cookie": session.set_cookie}))

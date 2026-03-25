@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SQU1D Web - Register</title>
+  <title>SQU1D Web - <?= title ?></title>
   <link rel="stylesheet" href="/static/site.css">
 </head>
 <body>
   <main class="container">
     <section class="card">
-      <h1>Create Account</h1>
-      <p class="muted">Register to start using SQU1D Web.</p>
+      <h1><?= title ?></h1>
       <p class="notice"><?= message ?></p>
+      <p class="notice"><?= error ?></p>
       <form method="post" action="/register">
         <label>Username</label>
         <input name="username" type="text" required>

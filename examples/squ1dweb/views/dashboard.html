@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SQU1D Web - Dashboard</title>
+  <title>SQU1D Web - <?= title ?></title>
   <link rel="stylesheet" href="/static/site.css">
 </head>
 <body>
@@ -18,6 +18,20 @@
           <button class="danger" type="submit">Logout</button>
         </form>
       </div>
+
+      <p class="notice"><?= message ?></p>
+      <p class="notice"><?= error ?></p>
+
+      <section class="panel">
+        <h2>TODO Manager (SQL)</h2>
+        <form method="post" action="/todo/add">
+          <input type="text" name="todo" placeholder="Add a TODO item" required>
+          <button type="submit">Add TODO</button>
+        </form>
+        <ul class="files">
+          <?!= todos_html ?>
+        </ul>
+      </section>
 
       <section class="panel">
         <h2>Upload File</h2>

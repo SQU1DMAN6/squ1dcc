@@ -1,0 +1,307 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+pkg.include("lib/sql_plugin/sql.sqx", "sql")
+
+var req = http.request()
+
+ensure_todo_table >> () {
+	var _ = sql.open(http.db_path())
+	var _ = sql.exec("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, title TEXT, done INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)", [])
+}
+
+current_session >> () {
+	return http.session_get(req.cookie)
+}
+
+current_username >> (session) {
+	var username = "guest"
+	if (type.tp(session.user) == "Object" and type.tp(session.user.username) == "String" and session.user.username != "") {
+		username = session.user.username
+	}
+	return username
+}
+
+is_logged_in >> (session) {
+	if (session.id == "") {
+		return false
+	}
+	return true
+}
+
+set_dashboard_flash >> (message, error) {
+	var _ = http.flash_set(req.cookie, {
+		title: "Dashboard",
+		message: message,
+		error: error
+	})
+}
+
+last_segment >> (value) {
+	var parts = string.sepr(value, "/")
+	if (array.cat(parts) == 0) {
+		return ""
+	}
+	return parts[array.cat(parts) - 1]
+}
+
+render_dashboard >> (username, title, message, error, todosHtml, filesHtml) {
+	io.echo(http.render_template(200, "views/dashboard.html", {
+		title: title,
+		message: message,
+		error: error,
+		username: username,
+		todos_html: todosHtml,
+		files_html: filesHtml
+	}))
+}
+
+dashboard_page >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		ensure_todo_table()
+
+		var title = "Dashboard"
+		var message = "Manage your TODOs and uploads."
+		var error = ""
+		var flash = http.flash_pop(req.cookie)
+		if (type.tp(flash) == "Object") {
+			if (type.tp(flash.title) == "String" and flash.title != "") {
+				title = flash.title
+			}
+			if (type.tp(flash.message) == "String" and flash.message != "") {
+				message = flash.message
+			}
+			if (type.tp(flash.error) == "String" and flash.error != "") {
+				error = flash.error
+			}
+		}
+
+		var todos = sql.query("SELECT id, title, done FROM todos WHERE username = ? ORDER BY id DESC LIMIT 50", [username])
+		var todosHtml = "<li>No TODO entries yet.</li>"
+		if (type.tp(todos) == "Array" and array.cat(todos) > 0) {
+			todosHtml = ""
+			var i = 0
+			while (i < array.cat(todos)) {
+				var todo = todos[i]
+				var todoId = type.d2s(todo.id)
+				var todoTitle = http.escape_html(todo.title)
+				var marker = "[ ]"
+				if (todo.done == 1) {
+					marker = "[x]"
+				}
+				var completeBtn = ""
+				if (todo.done != 1) {
+					completeBtn = "<form method=\"post\" action=\"/todo/complete\" class=\"inline\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button type=\"submit\">Complete</button></form>"
+				}
+				var deleteBtn = "<form method=\"post\" action=\"/todo/delete\" class=\"inline\"><input type=\"hidden\" name=\"todo_id\" value=\"" + todoId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
+				todosHtml = todosHtml + "<li><span class=\"todo-title\">" + marker + " " + todoTitle + "</span><span class=\"actions\">" + completeBtn + deleteBtn + "</span></li>"
+				i = i + 1
+			}
+		}
+
+		var files = http.db_query("SELECT id, stored_name, original_name FROM uploads WHERE username = ? ORDER BY id DESC LIMIT 50", [username])
+		var filesHtml = "<li>No uploads yet.</li>"
+		if (type.tp(files) == "Array" and array.cat(files) > 0) {
+			filesHtml = ""
+			var f = 0
+			while (f < array.cat(files)) {
+				var row = files[f]
+				var fileId = type.d2s(row.id)
+				var original = http.escape_html(row.original_name)
+				var openLink = "<a href=\"/download/" + fileId + "\">" + original + "</a>"
+				var deleteBtn = "<form method=\"post\" action=\"/upload/delete\" class=\"inline\"><input type=\"hidden\" name=\"upload_id\" value=\"" + fileId + "\"><button class=\"danger\" type=\"submit\">Delete</button></form>"
+				filesHtml = filesHtml + "<li><span class=\"file-link\">" + openLink + "</span><span class=\"actions\">" + deleteBtn + "</span></li>"
+				f = f + 1
+			}
+		}
+
+		render_dashboard(username, title, message, error, todosHtml, filesHtml)
+	}
+}
+
+todo_add_post >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var todo = string.trim(http.form_get(req.body, "todo", ""))
+		if (todo == "") {
+			set_dashboard_flash("", "TODO title is required.")
+		} el {
+			ensure_todo_table()
+			var inserted = sql.exec("INSERT INTO todos (username, title, done) VALUES (?, ?, 0)", [username, todo])
+			if (type.tp(inserted) == "Error" or type.tp(inserted) == "ERROR") {
+				set_dashboard_flash("", "Could not create TODO item.")
+			} el {
+				set_dashboard_flash("TODO added.", "")
+			}
+		}
+		io.echo(http.redirect(302, "/"))
+	}
+}
+
+todo_complete_post >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var todoId = string.trim(http.form_get(req.body, "todo_id", ""))
+		if (todoId == "") {
+			set_dashboard_flash("", "Invalid TODO id.")
+		} el {
+			ensure_todo_table()
+			var updated = sql.exec("UPDATE todos SET done = 1 WHERE id = ? AND username = ?", [todoId, username])
+			if (type.tp(updated) == "Error" or type.tp(updated) == "ERROR") {
+				set_dashboard_flash("", "Could not complete TODO item.")
+			} elif (type.tp(updated) == "Object" and updated.rows_affected == 0) {
+				set_dashboard_flash("", "TODO item not found.")
+			} el {
+				set_dashboard_flash("TODO completed.", "")
+			}
+		}
+		io.echo(http.redirect(302, "/"))
+	}
+}
+
+todo_delete_post >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var todoId = string.trim(http.form_get(req.body, "todo_id", ""))
+		if (todoId == "") {
+			set_dashboard_flash("", "Invalid TODO id.")
+		} el {
+			ensure_todo_table()
+			var deleted = sql.exec("DELETE FROM todos WHERE id = ? AND username = ?", [todoId, username])
+			if (type.tp(deleted) == "Error" or type.tp(deleted) == "ERROR") {
+				set_dashboard_flash("", "Could not delete TODO item.")
+			} elif (type.tp(deleted) == "Object" and deleted.rows_affected == 0) {
+				set_dashboard_flash("", "TODO item not found.")
+			} el {
+				set_dashboard_flash("TODO deleted.", "")
+			}
+		}
+		io.echo(http.redirect(302, "/"))
+	}
+}
+
+upload_post >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var contentType = req.content_type
+		var ctParts = string.sepr(contentType, ";")
+		var baseType = contentType
+		if (array.cat(ctParts) > 0) {
+			baseType = ctParts[0]
+		}
+		if (baseType != "multipart/form-data") {
+			set_dashboard_flash("", "Upload request must be multipart/form-data.")
+			io.echo(http.redirect(302, "/"))
+		} el {
+			if (req.body_file == "") {
+				set_dashboard_flash("", "Missing upload payload.")
+				io.echo(http.redirect(302, "/"))
+			} el {
+				var scoped = http.upload_user_dir(username)
+				if (type.tp(scoped) != "Object" or scoped.dir == "" or scoped.slug == "") {
+					set_dashboard_flash("", "Could not resolve per-user upload directory.")
+					io.echo(http.redirect(302, "/"))
+				} el {
+					var uploaded = http.upload_save(req.body_file, contentType, "file", scoped.dir)
+					if (type.tp(uploaded) == "Error" or type.tp(uploaded) == "ERROR") {
+						set_dashboard_flash("", "Upload failed.")
+					} el {
+						var storedName = scoped.slug + "/" + uploaded.stored_name
+						var inserted = http.db_exec("INSERT INTO uploads (username, stored_name, original_name) VALUES (?, ?, ?)", [username, storedName, uploaded.original_name])
+						if (type.tp(inserted) == "Error" or type.tp(inserted) == "ERROR") {
+							set_dashboard_flash("", "Upload saved but DB write failed.")
+						} el {
+							set_dashboard_flash("Upload complete.", "")
+						}
+					}
+					io.echo(http.redirect(302, "/"))
+				}
+			}
+		}
+	}
+}
+
+upload_delete_post >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var uploadId = string.trim(http.form_get(req.body, "upload_id", ""))
+		if (uploadId == "") {
+			set_dashboard_flash("", "Invalid upload id.")
+		} el {
+			var rows = http.db_query("SELECT stored_name FROM uploads WHERE id = ? AND username = ?", [uploadId, username])
+			if (type.tp(rows) != "Array" or array.cat(rows) == 0) {
+				set_dashboard_flash("", "Upload not found.")
+			} el {
+				var removed = http.upload_delete(rows[0].stored_name)
+				if (type.tp(removed) == "Error" or type.tp(removed) == "ERROR") {
+					set_dashboard_flash("", "Could not delete upload file safely.")
+				} el {
+					var _ = http.db_exec("DELETE FROM uploads WHERE id = ? AND username = ?", [uploadId, username])
+					set_dashboard_flash("Upload deleted.", "")
+				}
+			}
+		}
+		io.echo(http.redirect(302, "/"))
+	}
+}
+
+download_get >> () {
+	var session = current_session()
+	if (is_logged_in(session) == false) {
+		io.echo(http.redirect(302, "/login"))
+	} el {
+		var username = current_username(session)
+		var uploadId = string.trim(last_segment(req.path))
+		if (uploadId == "") {
+			io.echo(http.response_text(404, "Upload not found"))
+		} el {
+			var rows = http.db_query("SELECT stored_name, original_name FROM uploads WHERE id = ? AND username = ?", [uploadId, username])
+			if (type.tp(rows) != "Array" or array.cat(rows) == 0) {
+				io.echo(http.response_text(404, "Upload not found"))
+			} el {
+				var absPath = http.upload_path(rows[0].stored_name)
+				var response = http.download_file(200, absPath, rows[0].original_name)
+				if (type.tp(response) == "Error" or type.tp(response) == "ERROR") {
+					io.echo(http.response_text(404, "Upload not found"))
+				} el {
+					io.echo(response)
+				}
+			}
+		}
+	}
+}
+
+if (req.action == "dashboard_page") {
+	dashboard_page()
+} elif (req.action == "todo_add_post") {
+	todo_add_post()
+} elif (req.action == "todo_complete_post") {
+	todo_complete_post()
+} elif (req.action == "todo_delete_post") {
+	todo_delete_post()
+} elif (req.action == "upload_post") {
+	upload_post()
+} elif (req.action == "upload_delete_post") {
+	upload_delete_post()
+} elif (req.action == "download_get") {
+	download_get()
+} el {
+	io.echo(http.response_text(404, "Unknown web action"))
+}

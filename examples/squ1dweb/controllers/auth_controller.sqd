@@ -1,0 +1,119 @@
+pkg.include("lib/http_plugin/http.sqx", "http")
+
+var req = http.request()
+
+render_login >> (title, message, error, headers) {
+	io.echo(http.render_template(200, "views/login.html", {
+		title: title,
+		message: message,
+		error: error
+	}, headers))
+}
+
+render_register >> (title, message, error, headers) {
+	io.echo(http.render_template(200, "views/register.html", {
+		title: title,
+		message: message,
+		error: error
+	}, headers))
+}
+
+login_page >> () {
+	var session = http.session_get(req.cookie)
+	if (session.id != "") {
+		io.echo(http.redirect(302, "/"))
+	} el {
+		var title = "Login"
+		var message = "Log in to an existing SQU1D Web account."
+		var error = ""
+		var flash = http.flash_pop(req.cookie)
+		if (type.tp(flash) == "Object") {
+			if (type.tp(flash.title) == "String" and flash.title != "") {
+				title = flash.title
+			}
+			if (type.tp(flash.message) == "String" and flash.message != "") {
+				message = flash.message
+			}
+			if (type.tp(flash.error) == "String" and flash.error != "") {
+				error = flash.error
+			}
+		}
+		render_login(title, message, error, {})
+	}
+}
+
+login_post >> () {
+	var username = http.form_get(req.body, "username", "")
+	var password = http.form_get(req.body, "password", "")
+
+	if (username == "" or password == "") {
+		render_login("Login", "Log in to an existing SQU1D Web account.", "Username and password are required.", {})
+	} el {
+		var found = http.db_query("SELECT password FROM users WHERE username = ?", [username])
+		if (type.tp(found) != "Array" or array.cat(found) == 0) {
+			render_login("Login", "Log in to an existing SQU1D Web account.", "Invalid credentials.", {})
+		} el {
+			var verify = http.password_verify(password, found[0].password)
+			if (verify != 1) {
+				render_login("Login", "Log in to an existing SQU1D Web account.", "Invalid credentials.", {})
+			} el {
+				var session = http.session_create({username: username})
+				io.echo(http.redirect(302, "/", {"Set-Cookie": session.set_cookie}))
+			}
+		}
+	}
+}
+
+register_page >> () {
+	var session = http.session_get(req.cookie)
+	if (session.id != "") {
+		io.echo(http.redirect(302, "/"))
+	} el {
+		render_register("Register", "Create a new SQU1D Web account.", "", {})
+	}
+}
+
+register_post >> () {
+	var username = http.form_get(req.body, "username", "")
+	var password = http.form_get(req.body, "password", "")
+
+	if (username == "" or password == "") {
+		render_register("Register", "Create a new SQU1D Web account.", "Username and password are required.", {})
+	} el {
+		var existing = http.db_query("SELECT id FROM users WHERE username = ?", [username])
+		if (type.tp(existing) == "Array" and array.cat(existing) > 0) {
+			render_register("Register", "Create a new SQU1D Web account.", "Username already exists.", {})
+		} el {
+			var passwordHash = http.password_hash(password)
+			if (type.tp(passwordHash) == "Error" or type.tp(passwordHash) == "ERROR") {
+				render_register("Register", "Create a new SQU1D Web account.", "Could not create account.", {})
+			} el {
+				var inserted = http.db_exec("INSERT INTO users (username, password) VALUES (?, ?)", [username, passwordHash])
+				if (type.tp(inserted) == "Error" or type.tp(inserted) == "ERROR") {
+					render_register("Register", "Create a new SQU1D Web account.", "Could not create account.", {})
+				} el {
+					render_login("Login", "Account created. Please log in.", "", {})
+				}
+			}
+		}
+	}
+}
+
+logout_post >> () {
+	var destroyed = http.session_destroy(req.cookie)
+	render_login("Login", "You have been logged out.", "", {"Set-Cookie": destroyed.set_cookie})
+}
+
+if (req.action == "login_page") {
+	login_page()
+} elif (req.action == "login_post") {
+	login_post()
+} elif (req.action == "register_page") {
+	register_page()
+} elif (req.action == "register_post") {
+	register_post()
+} elif (req.action == "logout_post") {
+	logout_post()
+} el {
+	io.echo(http.response_text(404, "Unknown auth action"))
+}

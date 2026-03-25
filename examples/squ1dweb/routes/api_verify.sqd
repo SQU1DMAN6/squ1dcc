@@ -1,2 +1,0 @@
-pkg.include("lib/http_plugin/http.sqx", "http")
-io.echo(http.response_json(200, {verified: true}))

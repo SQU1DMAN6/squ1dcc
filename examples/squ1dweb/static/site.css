@@ -99,7 +99,37 @@ button.danger {
 }
 
 .files li {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.todo-title,
+.file-link {
+  flex: 1;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.inline {
+  display: inline-flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.inline input[type="hidden"] {
+  display: none;
+}
+
+.inline button {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 a {
