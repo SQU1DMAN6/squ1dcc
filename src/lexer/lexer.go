@@ -62,6 +62,25 @@ func (l *Lexer) NextToken() token.Token {
 			return tok
 		} else if isDigit(l.ch) {
 			position := l.position
+
+			// Check for hex literal (0x prefix)
+			if l.ch == '0' && l.peekChar() == 'x' {
+				l.readChar() // consume '0'
+				l.readChar() // consume 'x'
+
+				// Read hex digits
+				for isHexDigit(l.ch) {
+					l.readChar()
+				}
+
+				tok.Type = token.HEX
+				tok.Literal = l.input[position:l.position]
+				tok.Line = startLine
+				tok.Column = startCol
+				return tok
+			}
+
+			// Read regular integer digits
 			for isDigit(l.ch) {
 				l.readChar()
 			}
@@ -412,6 +431,10 @@ func isDigit(ch byte) bool {
 
 func isFloatChar(ch byte) bool {
 	return ('0' <= ch && ch <= '9') || ch == '.' || ch == '-' || ch == '\''
+}
+
+func isHexDigit(ch byte) bool {
+	return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F')
 }
 
 func (l *Lexer) peekChar() byte {

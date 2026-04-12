@@ -1,0 +1,93 @@
+var x = 0xFF;
+var y = 0x100;
+var z = 0x10;
+
+io.write("Test 1: Hex Literals\n");
+io.write("x = 0xFF = ");
+io.echo(x);
+io.write("y = 0x100 = ");
+io.echo(y);
+io.write("z = 0x10 = ");
+io.echo(z);
+io.write("\n");
+
+io.write("Test 2: Negation\n");
+var neg_x = -x;
+io.write("-0xFF = ");
+io.echo(neg_x);
+io.write("\n");
+
+io.write("Test 3: Arithmetic Operations\n");
+var sum = x + y;
+io.write("0xFF + 0x100 = ");
+io.echo(sum);
+
+var diff = y - z;
+io.write("0x100 - 0x10 = ");
+io.echo(diff);
+
+var product = 0x10 * 0x2;
+io.write("0x10 * 0x2 = ");
+io.echo(product);
+
+var quotient = 0x100 / 0x10;
+io.write("0x100 / 0x10 = ");
+io.echo(quotient);
+io.write("\n");
+
+io.write("Test 4: Mixed Hex and Integer Operations\n");
+var hex_val = 0x20;
+var int_val = 16;
+var mixed_sum = hex_val + int_val;
+io.write("0x20 + 16 = ");
+io.echo(mixed_sum);
+
+var mixed_diff = int_val - 0x10;
+io.write("16 - 0x10 = ");
+io.echo(mixed_diff);
+io.write("\n");
+
+io.write("Test 5: Type Checking\n");
+io.write("type.tp(0xFF) = ");
+io.echo(type.tp(0xFF));
+io.write("type.tp(255) = ");
+io.echo(type.tp(255));
+io.write("\n");
+
+io.write("Test 6: Hex to Integer Conversion\n");
+var hex_num = 0xAB;
+var int_num = type.h2i(hex_num);
+io.write("Hex 0xAB = Integer ");
+io.echo(int_num);
+io.write("\n");
+
+io.write("Test 7: Integer to Hex Conversion\n");
+var int_to_hex = type.hex(255);
+io.write("Integer 255 = Hex ");
+io.echo(int_to_hex);
+io.write("\n");
+
+io.write("Test 8: Array of Hex to String\n");
+var hex_bytes = [0x48, 0x65, 0x6C, 0x6C, 0x6F];
+var hex_str = type.hex2s(hex_bytes);
+io.write("Hex array [0x48, 0x65, 0x6C, 0x6C, 0x6F] = ");
+io.echo(hex_str);
+io.write("\n");
+
+io.write("Test 9: Mixed Hex and Integer Array to String\n");
+var mixed_bytes = [0x50, 105, 0x7A, 122, 0x61];
+var mixed_str = type.hex2s(mixed_bytes);
+io.write("Mixed array [0x50, 105, 0x7A, 122, 0x61] = ");
+io.echo(mixed_str);
+io.write("\n");
+
+io.write("Test 10: Complex Expression\n");
+var a = 0x10;
+var b = 0x20;
+var c = 0x30;
+var result = (a + b) * c;
+io.write("(0x10 + 0x20) * 0x30 = ");
+io.echo(result);
+
+io.write("\n");
+io.write("All tests completed!\n");

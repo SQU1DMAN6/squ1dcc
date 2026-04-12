@@ -56,6 +56,19 @@ Floats can be written and automatically detected if they have a decimal point:
 29.24837
 ```
 
+### Hex
+
+Hex (hexadecimal) values are whole numbers prefixed with `0x`. They are useful for working with byte values, color codes, and other hex-based data:
+
+```squ1d
+0xFF        # 255 in decimal
+0xABCDEF    # RGB color code
+0x10        # 16 in decimal
+0x0         # Zero
+```
+
+Hex values are displayed in lowercase hex notation (e.g., `0xff`). For more details, see [HEX_TYPE.md](docs/HEX_TYPE.md).
+
 ### Booleans
 
 ```squ1d

@@ -151,6 +151,15 @@ func (float *FloatLiteral) expressionNode()      {}
 func (float *FloatLiteral) TokenLiteral() string { return float.Token.Literal }
 func (float *FloatLiteral) String() string       { return float.Token.Literal }
 
+type HexLiteral struct {
+	Token token.Token
+	Value int64
+}
+
+func (h *HexLiteral) expressionNode()      {}
+func (h *HexLiteral) TokenLiteral() string { return h.Token.Literal }
+func (h *HexLiteral) String() string       { return h.Token.Literal }
+
 type FunctionLiteral struct {
 	Token      token.Token
 	Parameters []*Identifier

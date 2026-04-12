@@ -424,6 +424,28 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	switch {
 	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
 		return vm.executeBinaryIntegerOperation(op, left, right)
+	case leftType == object.HEX_OBJ && rightType == object.HEX_OBJ:
+		// Convert hex to integer for operation, return as hex
+		leftInt := &object.Integer{Value: left.(*object.Hex).Value}
+		rightInt := &object.Integer{Value: right.(*object.Hex).Value}
+		err := vm.executeBinaryIntegerOperation(op, leftInt, rightInt)
+		if err != nil {
+			return err
+		}
+		// Pop the result and convert back to hex
+		result := vm.pop()
+		if intResult, ok := result.(*object.Integer); ok {
+			return vm.push(&object.Hex{Value: intResult.Value})
+		}
+		return vm.push(result)
+	case leftType == object.INTEGER_OBJ && rightType == object.HEX_OBJ:
+		// Convert hex to integer and perform integer operation
+		hexAsInt := &object.Integer{Value: right.(*object.Hex).Value}
+		return vm.executeBinaryIntegerOperation(op, left, hexAsInt)
+	case leftType == object.HEX_OBJ && rightType == object.INTEGER_OBJ:
+		// Convert hex to integer and perform integer operation
+		hexAsInt := &object.Integer{Value: left.(*object.Hex).Value}
+		return vm.executeBinaryIntegerOperation(op, hexAsInt, right)
 	case leftType == object.FLOAT_OBJ && rightType == object.FLOAT_OBJ:
 		return vm.executeBinaryFloatOperation(op, left, right)
 	case leftType == object.INTEGER_OBJ && rightType == object.FLOAT_OBJ:
@@ -601,12 +623,23 @@ func (vm *VM) executeBangOperator() error {
 func (vm *VM) executeNegateOperator() error {
 	operand := vm.pop()
 
-	if operand.Type() != object.INTEGER_OBJ && operand.Type() != object.FLOAT_OBJ {
+	switch operand.Type() {
+	case object.INTEGER_OBJ:
+		value := operand.(*object.Integer).Value
+		return vm.push(&object.Integer{Value: -value})
+	case object.HEX_OBJ:
+		value := operand.(*object.Hex).Value
+		return vm.push(&object.Hex{Value: -value})
+	case object.FLOAT_OBJ:
+		value := operand.(*object.Float).Value
+		return vm.push(&object.Float{Value: -value})
+	default:
 		return fmt.Errorf("Unsupported type for negation: %s", operand.Type())
 	}
 
-	value := operand.(*object.Integer).Value
-	return vm.push(&object.Integer{Value: -value})
+	// if operand.Type() != object.INTEGER_OBJ && operand.Type() != object.FLOAT_OBJ {
+	// 	return fmt.Errorf("Unsupported type for negation: %s", operand.Type())
+	// }
 }
 
 func (vm *VM) executeLogicalOperation(op code.Opcode) error {

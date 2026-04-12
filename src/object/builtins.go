@@ -278,6 +278,8 @@ var Builtins = []struct {
 				return &String{Value: "Integer"}
 			case *Float:
 				return &String{Value: "Float"}
+			case *Hex:
+				return &String{Value: "Hex"}
 			case *Boolean:
 				return &String{Value: "Boolean"}
 			case *Builtin:
@@ -399,6 +401,72 @@ var Builtins = []struct {
 			}
 
 			return &String{Value: stringValue}
+		}, "type"),
+	},
+	{
+		"hex",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			if args[0].Type() == HEX_OBJ {
+				return args[0]
+			}
+
+			intVal, ok := args[0].(*Integer)
+			if !ok {
+				return newError("Argument 0 to `hex` must be INTEGER, got %s", args[0].Type())
+			}
+
+			return &Hex{Value: intVal.Value}
+		}, "type"),
+	},
+	{
+		"h2i",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			if args[0].Type() == INTEGER_OBJ {
+				return args[0]
+			}
+
+			hex, ok := args[0].(*Hex)
+			if !ok {
+				return newError("Argument 0 to `h2i` must be HEX, got %s", args[0].Type())
+			}
+
+			return &Integer{Value: hex.Value}
+		}, "type"),
+	},
+	{
+		"hex2s",
+		createBuiltin(func(args ...Object) Object {
+			if len(args) != 1 {
+				return newError("Wrong number of arguments. Expected 1, got %d", len(args))
+			}
+
+			arr, ok := args[0].(*Array)
+			if !ok {
+				return newError("Argument 0 to `hex2s` must be ARRAY, got %s", args[0].Type())
+			}
+
+			// Convert array of hex values to string
+			bytesSlice := make([]byte, len(arr.Elements))
+			for i, elem := range arr.Elements {
+				switch v := elem.(type) {
+				case *Hex:
+					bytesSlice[i] = byte(v.Value)
+				case *Integer:
+					bytesSlice[i] = byte(v.Value)
+				default:
+					return newError("Array element %d is not HEX or INTEGER, got %s", i, elem.Type())
+				}
+			}
+
+			return &String{Value: string(bytesSlice)}
 		}, "type"),
 	},
 	{

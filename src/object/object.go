@@ -30,6 +30,7 @@ const (
 	ERROR_OBJ             = "ERROR"
 	INTEGER_OBJ           = "INTEGER"
 	FLOAT_OBJ             = "FLOAT"
+	HEX_OBJ               = "HEX"
 	BOOLEAN_OBJ           = "BOOLEAN"
 	STRING_OBJ            = "STRING"
 	RETURN_VALUE_OBJ      = "RETURN_VALUE"
@@ -80,6 +81,21 @@ func (f *Float) Inspect() string {
 }
 func (f *Float) HashKey() HashKey {
 	return HashKey{Type: f.Type(), Value: uint64(f.Value)}
+}
+
+type Hex struct {
+	Value int64
+}
+
+func (h *Hex) Type() ObjectType { return HEX_OBJ }
+func (h *Hex) Inspect() string {
+	if h.Value < 0 {
+		return fmt.Sprintf("-0x%x", -h.Value)
+	}
+	return fmt.Sprintf("0x%x", h.Value)
+}
+func (h *Hex) HashKey() HashKey {
+	return HashKey{Type: h.Type(), Value: uint64(h.Value)}
 }
 
 type Boolean struct {
