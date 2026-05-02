@@ -130,12 +130,15 @@ suppress 123 + 456
 
 Functions can be declared in two supported forms:
 
+Legacy form from SQU1DLang 1.0
 ```squ1d
-var add = def(a, b) {
+var functionName = def(a, b) {
     return a + b
 }
+```
 
-addNamed >> (a, b) {
+New form from SQU1DLang 1.5
+functionName >> (a, b) {
     return a + b
 }
 ```
