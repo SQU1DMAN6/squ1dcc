@@ -104,10 +104,10 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 	case *ast.PrefixExpression:
 		right := Eval(node.Right, env)
-		// Allow the error-pipe prefix (<<) to observe Error values — don't
-		// short-circuit here for that operator. For all other prefixes, keep
+		// Allow the error-pipe (<<) and ok-pipe (<<<) operators to observe values — don't
+		// short-circuit here for those operators. For all other prefixes, keep
 		// the previous behavior of returning early on Error.
-		if isError(right) && node.Operator != "<<" {
+		if isError(right) && node.Operator != "<<" && node.Operator != "<<<" {
 			return right
 		}
 		return evalPrefixExpression(node.Operator, right)
@@ -336,16 +336,56 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 	case "-":
 		return evalMinusPrefixOperatorExpression(right)
 	case "<<":
-		// Error-pipe as prefix expression: if the evaluated right side is an
-		// Error, return that Error object; otherwise return NULL to indicate
-		// no error value.
-		if isError(right) {
-			return right
-		}
-		return NULL
+		// Error-pipe: extract .error field from result object
+		// Result object format: {ok: boolean, value: any, error: string|null}
+		return extractErrorField(right)
+	case "<<<":
+		// OK-pipe: extract .ok field from result object
+		// Result object format: {ok: boolean, value: any, error: string|null}
+		return extractOkField(right)
 	default:
 		return newError("Unknown operator: %s%s", operator, right.Type())
 	}
+}
+
+func extractErrorField(obj object.Object) object.Object {
+	if obj.Type() != object.HASH_OBJ {
+		return newError("Cannot extract .error from %s", obj.Type())
+	}
+
+	h := obj.(*object.Hash)
+
+	// Look for "error" key in the hash
+	for _, pair := range h.Pairs {
+		if pair.Key.Type() == object.STRING_OBJ {
+			keyStr := pair.Key.(*object.String).Value
+			if keyStr == "error" {
+				return pair.Value
+			}
+		}
+	}
+
+	return NULL
+}
+
+func extractOkField(obj object.Object) object.Object {
+	if obj.Type() != object.HASH_OBJ {
+		return newError("Cannot extract .ok from %s", obj.Type())
+	}
+
+	h := obj.(*object.Hash)
+
+	// Look for "ok" key in the hash
+	for _, pair := range h.Pairs {
+		if pair.Key.Type() == object.STRING_OBJ {
+			keyStr := pair.Key.(*object.String).Value
+			if keyStr == "ok" {
+				return pair.Value
+			}
+		}
+	}
+
+	return NULL
 }
 
 func evalInfixExpression(

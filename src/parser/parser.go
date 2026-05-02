@@ -97,6 +97,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
 	p.registerPrefix(token.ERROR_PIPE, p.parsePrefixExpression)
+	p.registerPrefix(token.OK_PIPE, p.parsePrefixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)

@@ -129,18 +129,32 @@ func (rv *ReturnValue) Type() ObjectType { return RETURN_VALUE_OBJ }
 func (rv *ReturnValue) Inspect() string  { return rv.Value.Inspect() }
 
 type Error struct {
-	Message  string
-	Filename string
-	Line     int
-	Column   int
+	Message   string
+	Filename  string
+	Line      int
+	Column    int
+	Traceback []string // Stack frames for error context
 }
 
 func (e *Error) Type() ObjectType { return ERROR_OBJ }
 func (e *Error) Inspect() string {
+	var out bytes.Buffer
+
 	if e.Filename != "" {
-		return fmt.Sprintf("ERROR: %s, line %d, column %d: %s", e.Filename, e.Line, e.Column, e.Message)
+		out.WriteString(fmt.Sprintf("ERROR: %s, line %d, column %d: %s\n", e.Filename, e.Line, e.Column, e.Message))
+	} else {
+		out.WriteString("ERROR: " + e.Message + "\n")
 	}
-	return "ERROR: " + e.Message
+
+	// Add traceback if available
+	if len(e.Traceback) > 0 {
+		out.WriteString("\nTraceback:\n")
+		for _, frame := range e.Traceback {
+			out.WriteString(fmt.Sprintf("  %s\n", frame))
+		}
+	}
+
+	return strings.TrimRight(out.String(), "\n")
 }
 
 type Function struct {
@@ -287,6 +301,7 @@ type CompiledFunction struct {
 	Instructions  code.Instructions
 	NumLocals     int
 	NumParameters int
+	Name          string
 }
 
 func (cf *CompiledFunction) Type() ObjectType { return COMPILED_FUNCTION_OBJ }

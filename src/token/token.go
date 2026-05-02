@@ -56,6 +56,7 @@ const (
 	SUPPRESS    = "SUPPRESS"
 	UNBLOCK     = "UNBLOCK"
 	ERROR_PIPE  = "ERROR_PIPE"
+	OK_PIPE     = "OK_PIPE"
 	BLOCK       = "BLOCK"
 	BREAK       = "BREAK"
 	CONTINUE    = "CONTINUE"

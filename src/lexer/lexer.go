@@ -137,7 +137,14 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Line = startLine
 		tok.Column = startCol
 	case '<':
-		if l.peekChar() == '<' {
+		if l.peekChar() == '<' && l.peekChar2() == '<' {
+			// Triple <<< for OK_PIPE
+			ch := l.ch
+			l.readChar()
+			l.readChar()
+			tok = token.Token{Type: token.OK_PIPE, Literal: string(ch) + string(l.ch) + string(l.input[l.position]), Line: startLine, Column: startCol}
+		} else if l.peekChar() == '<' {
+			// Double << for ERROR_PIPE
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{Type: token.ERROR_PIPE, Literal: string(ch) + string(l.ch), Line: startLine, Column: startCol}
@@ -442,6 +449,14 @@ func (l *Lexer) peekChar() byte {
 		return 0
 	} else {
 		return l.input[l.readPosition]
+	}
+}
+
+func (l *Lexer) peekChar2() byte {
+	if l.readPosition+1 >= len(l.input) {
+		return 0
+	} else {
+		return l.input[l.readPosition+1]
 	}
 }
 

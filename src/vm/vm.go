@@ -354,6 +354,70 @@ func (vm *VM) Run() error {
 				}
 			}
 
+		case code.OpExtractErrorField:
+			// Pop the value from stack and extract .error field
+			val := vm.pop()
+			if val.Type() != object.HASH_OBJ {
+				if err := vm.push(&object.Error{Message: fmt.Sprintf("Cannot extract .error from %s", val.Type())}); err != nil {
+					return err
+				}
+				break
+			}
+
+			h := val.(*object.Hash)
+			// Look for "error" key in the hash
+			found := false
+			for _, pair := range h.Pairs {
+				if pair.Key.Type() == object.STRING_OBJ {
+					keyStr := pair.Key.(*object.String).Value
+					if keyStr == "error" {
+						if err := vm.push(pair.Value); err != nil {
+							return err
+						}
+						found = true
+						break
+					}
+				}
+			}
+
+			if !found {
+				if err := vm.push(Null); err != nil {
+					return err
+				}
+			}
+
+		case code.OpExtractOkField:
+			// Pop the value from stack and extract .ok field
+			val := vm.pop()
+			if val.Type() != object.HASH_OBJ {
+				if err := vm.push(&object.Error{Message: fmt.Sprintf("Cannot extract .ok from %s", val.Type())}); err != nil {
+					return err
+				}
+				break
+			}
+
+			h := val.(*object.Hash)
+			// Look for "ok" key in the hash
+			found := false
+			for _, pair := range h.Pairs {
+				if pair.Key.Type() == object.STRING_OBJ {
+					keyStr := pair.Key.(*object.String).Value
+					if keyStr == "ok" {
+						if err := vm.push(pair.Value); err != nil {
+							return err
+						}
+						found = true
+						break
+					}
+				}
+			}
+
+			if !found {
+				if err := vm.push(Null); err != nil {
+					return err
+				}
+			}
+
 		case code.OpCurrentClosure:
 			currentClosure := vm.currentFrame().cl
 			err := vm.push(currentClosure)
@@ -781,8 +845,12 @@ func (vm *VM) executeCall(numArgs int) error {
 
 func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	if numArgs != cl.Fn.NumParameters {
-		return fmt.Errorf("Wrong number of arguments. Expected %d, got %d",
-			cl.Fn.NumParameters, numArgs)
+		err := &object.Error{
+			Message: fmt.Sprintf("Wrong number of arguments. Expected %d, got %d",
+				cl.Fn.NumParameters, numArgs),
+			Traceback: vm.getTraceback(),
+		}
+		return fmt.Errorf("%s", err.Inspect())
 	}
 
 	frame := NewFrame(cl, vm.sp-numArgs)
@@ -825,8 +893,12 @@ func (vm *VM) callInterpreterFunction(fn *object.Function, numArgs int) error {
 	// Support for calling interpreter-mode (evaluator-created) functions
 	// These come from included files that are evaluated with the evaluator
 	if numArgs != len(fn.Parameters) {
-		return fmt.Errorf("Wrong number of arguments. Expected %d, got %d",
-			len(fn.Parameters), numArgs)
+		err := &object.Error{
+			Message: fmt.Sprintf("Wrong number of arguments. Expected %d, got %d",
+				len(fn.Parameters), numArgs),
+			Traceback: vm.getTraceback(),
+		}
+		return fmt.Errorf("%s", err.Inspect())
 	}
 
 	// Get arguments from stack
@@ -994,6 +1066,29 @@ func (vm *VM) pushFrame(f *Frame) {
 func (vm *VM) popFrame() *Frame {
 	vm.framesIndex--
 	return vm.frames[vm.framesIndex]
+}
+
+func (vm *VM) getTraceback() []string {
+	// Build a traceback from the current call stack
+	var traceback []string
+
+	for i := 0; i < vm.framesIndex; i++ {
+		frame := vm.frames[i]
+		if frame == nil || frame.cl == nil || frame.cl.Fn == nil {
+			continue
+		}
+
+		// Get function name
+		fnName := frame.cl.Fn.Name
+		if fnName == "" {
+			fnName = "<anonymous>"
+		}
+
+		// Format: in function_name at instruction offset
+		traceback = append(traceback, fmt.Sprintf("in %s at offset %d", fnName, frame.ip))
+	}
+
+	return traceback
 }
 
 // TriggerEvent executes registered GUI event handlers (closures) for the

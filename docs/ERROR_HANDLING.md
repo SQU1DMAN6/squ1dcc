@@ -26,7 +26,7 @@ All fallible functions **MUST** return the following structure:
 
 ### Method 1: NOT RECOMMENDED - Unsafe
 
-❌ **DO NOT USE** - This pattern has critical flaws:
+**DO NOT USE** - This pattern has critical flaws:
 
 ```sqd
 if ((<< divide(51, 3)) == null) {
@@ -42,7 +42,7 @@ if ((<< divide(51, 3)) == null) {
 - Inconsistent state between checks
 - Hard to debug
 
-### Method 2: RECOMMENDED - Clean Standard ✓
+### Method 2: RECOMMENDED - Clean Standard
 
 ✓ **USE THIS** - Single execution, clear semantics:
 
@@ -61,20 +61,20 @@ if (result.ok) {
 ```
 
 **Advantages:**
-- ✓ Single execution
-- ✓ Explicit control flow
-- ✓ Predictable debugging behavior
-- ✓ Canonical approach
-- ✓ Clear, readable code
+- Single execution
+- Explicit control flow
+- Predictable debugging behavior
+- Canonical approach
+- Clear, readable code
 
 ### Method 3: ACCEPTABLE - Shorthand
 
-✓ **USE THIS IF** - Result already exists:
+**USE THIS IF** - Result already exists:
 
 ```sqd
 var result = divide(51, 3)
 
-if (<< result == null) {
+if (<< result == null && <<< result == true) {
     # No error occurred
     io.echo(result.value)
     io.echo("\n")
@@ -86,22 +86,22 @@ if (<< result == null) {
 ```
 
 **Advantages:**
-- ✓ Safe because result already exists (no re-execution)
-- ✓ Shorthand for error checking
-- ✓ Optional syntactic sugar on top of Method 2
+- Safe because result already exists (no re-execution)
+- Shorthand for error checking
+- Optional syntactic sugar on top of Method 2
 
 ## Enforcement Rules
 
 ### RULE 1: Never Execute Functions Inside `<<`
 
-❌ WRONG:
+WRONG:
 ```sqd
 if ((<< divide(x, y)) == null) {
     # Function executed here
 }
 ```
 
-✓ CORRECT:
+CORRECT:
 ```sqd
 var result = divide(x, y)
 if ((<< result) == null) {
@@ -111,7 +111,7 @@ if ((<< result) == null) {
 
 ### RULE 2: Use `ok` Field for Logic Decisions
 
-❌ WRONG:
+WRONG:
 ```sqd
 if (result.error == null) {
     # Not idiomatic
@@ -127,14 +127,14 @@ if (result.ok) {
 
 ### RULE 3: Avoid Duplicate Execution
 
-❌ WRONG:
+WRONG:
 ```sqd
 if (someFunction().ok) {
     var value = someFunction().value  # Executed twice!
 }
 ```
 
-✓ CORRECT:
+CORRECT:
 ```sqd
 var result = someFunction()
 if (result.ok) {
@@ -227,7 +227,7 @@ if (<< result == null) {
 }
 ```
 
-### `<<<` Operator (Ok Pipe) - Future
+### `<<<` Operator (OK Pipe) - Future
 
 Will extract the `ok` field value for convenience:
 

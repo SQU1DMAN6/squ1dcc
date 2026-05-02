@@ -190,25 +190,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case "-":
 			c.emit(code.OpNGT)
 		case "<<":
-			// Error-pipe as a prefix expression: if the inner value is an Error,
-			// leave it on the stack; otherwise replace it with null.
-			c.emit(code.OpIsError)
-			jumpNotErrPos := c.emit(code.OpJumpNotTruthy, 9999)
-
-			// True branch: value is Error -> do nothing (value still on stack)
-			// Also emit a bogus value
-			jumpPos := c.emit(code.OpJump, 9999)
-
-			afterTruePos := len(c.currentInstructions())
-			c.changeOperand(jumpNotErrPos, afterTruePos)
-
-			// False branch: pop the value and push null
-			c.emit(code.OpPop)
-			c.emit(code.OpNull)
-
-			afterFalsePos := len(c.currentInstructions())
-			c.changeOperand(jumpPos, afterFalsePos)
-
+			// Error-pipe: extract .error field from result object
+			c.emit(code.OpExtractErrorField)
+			return nil
+		case "<<<":
+			// OK-pipe: extract .ok field from result object
+			c.emit(code.OpExtractOkField)
 			return nil
 		default:
 			return fmt.Errorf("line %d, column %d: Unknown operator: %s", node.Token.Line, node.Token.Column, node.Operator)
@@ -620,6 +607,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Parameters),
+			Name:          node.Name,
 		}
 
 		fnIndex := c.addConstant(compiledFn)

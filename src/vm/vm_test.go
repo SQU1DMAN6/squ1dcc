@@ -759,16 +759,25 @@ outer();
 func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			input:    `def() { 1; }(1)`,
-			expected: `Wrong number of arguments. Expected 0, got 1`,
+			input: `def() { 1; }(1)`,
+			expected: `ERROR: Wrong number of arguments. Expected 0, got 1
+
+Traceback:
+  in <anonymous> at offset 8`,
 		},
 		{
-			input:    `def(a) { a; }();`,
-			expected: `Wrong number of arguments. Expected 1, got 0`,
+			input: `def(a) { a; }();`,
+			expected: `ERROR: Wrong number of arguments. Expected 1, got 0
+
+Traceback:
+  in <anonymous> at offset 5`,
 		},
 		{
-			input:    `def(a, b) { a + b; }(1);`,
-			expected: `Wrong number of arguments. Expected 2, got 1`,
+			input: `def(a, b) { a + b; }(1);`,
+			expected: `ERROR: Wrong number of arguments. Expected 2, got 1
+
+Traceback:
+  in <anonymous> at offset 8`,
 		},
 	}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"squ1d++/ast"
@@ -15,6 +16,7 @@ import (
 	"squ1d++/parser"
 	"squ1d++/vm"
 	"strings"
+	"syscall"
 )
 
 const PROMPT = ">> "
@@ -23,15 +25,12 @@ const CONTINUATION_PROMPT = " > "
 // readCompleteInput reads input until a complete statement is entered
 func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
 	var input strings.Builder
-
 	scanned := scanner.Scan()
 	if !scanned {
 		return ""
 	}
-
 	line := scanner.Text()
 	input.WriteString(line)
-
 	// Check if we need to continue reading (unmatched braces, parentheses, etc.)
 	for needsContinuation(input.String()) {
 		fmt.Fprintf(out, CONTINUATION_PROMPT)
@@ -43,7 +42,6 @@ func readCompleteInput(scanner *bufio.Scanner, out io.Writer) string {
 		input.WriteString("\n")
 		input.WriteString(line)
 	}
-
 	return input.String()
 }
 
@@ -51,7 +49,6 @@ func needsContinuation(line string) bool {
 	openBraces := 0
 	openParens := 0
 	openBrackets := 0
-
 	for _, char := range line {
 		switch char {
 		case '{':
@@ -68,7 +65,6 @@ func needsContinuation(line string) bool {
 			openBrackets--
 		}
 	}
-
 	// Continue if we have unmatched delimiters
 	return openBraces > 0 || openParens > 0 || openBrackets > 0
 }
@@ -80,19 +76,15 @@ func Start(in io.Reader, out io.Writer) {
 	if err != nil {
 		panic(err)
 	}
-
 	// REPL state for migration to compiler/VM with include fallback via evaluator
 	scanner := bufio.NewScanner(in)
-
 	classes := object.CreateClassObjects()
 	globals := make([]object.Object, vm.GlobalsSize)
 	symbolTable := compiler.NewSymbolTable()
 	env := object.NewEnvironment()
-
 	for name, obj := range classes {
 		env.Set(name, obj)
 	}
-
 	// Register builtins and classes in compiler symbol table and globals
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
@@ -101,18 +93,18 @@ func Start(in io.Reader, out io.Writer) {
 		sym := symbolTable.Define(name)
 		globals[sym.Index] = obj
 	}
-
 	constants := []object.Object{}
-
 	for {
 		fmt.Fprintf(out, PROMPT)
-
 		// Read complete input (handling multi-line statements)
 		input := readCompleteInput(scanner, out)
 		if input == "" {
+			if !scanner.Scan() {
+				fmt.Println("\nSee you later.")
+				break
+			}
 			continue
 		}
-
 		// Simple include handling: include("path") or include("name")
 		if incPath, ok := tryParseInclude(input); ok {
 			if err := executeInclude(incPath, env, out); err != nil {
@@ -120,31 +112,25 @@ func Start(in io.Reader, out io.Writer) {
 			}
 			continue
 		}
-
 		l := lexer.New(input)
 		p := parser.New(l)
-
 		program := p.ParseProgram()
 		if len(p.Errors()) != 0 {
 			printParserErrors(out, p.Errors())
 			continue
 		}
-
 		compiled := compiler.NewWithState(symbolTable, constants)
 		if err := compiled.Compile(program); err != nil {
 			io.WriteString(out, "Compilation error: "+err.Error()+"\n")
 			continue
 		}
-
 		bytecode := compiled.Bytecode()
 		constants = bytecode.Constants
-
 		machine := vm.NewWithGlobalsStore(bytecode, globals)
 		if err := machine.Run(); err != nil {
 			io.WriteString(out, "Runtime error: "+err.Error()+"\n")
 			continue
 		}
-
 		if last := machine.LastPoppedStackElem(); last != nil && last.Type() != object.NULL_OBJ {
 			io.WriteString(out, last.Inspect()+"\n")
 		}
@@ -178,7 +164,6 @@ func executeInclude(path string, env *object.Environment, out io.Writer) error {
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates, home+"/.squ1dlang/packages/"+path+"/main.sqd")
 	}
-
 	var chosen string
 	for _, c := range candidates {
 		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
@@ -189,12 +174,10 @@ func executeInclude(path string, env *object.Environment, out io.Writer) error {
 	if chosen == "" {
 		return fmt.Errorf("module or file not found: %s", path)
 	}
-
 	data, err := os.ReadFile(chosen)
 	if err != nil {
 		return fmt.Errorf("could not read %s: %v", chosen, err)
 	}
-
 	// Parse and execute as a whole unit to preserve statements across lines
 	l := lexer.New(string(data))
 	p := parser.New(l)
@@ -203,7 +186,6 @@ func executeInclude(path string, env *object.Environment, out io.Writer) error {
 		printParserErrors(out, p.Errors())
 		return fmt.Errorf("parse errors in include %s", chosen)
 	}
-
 	evaluated := evaluator.Eval(program, env)
 	if evaluated != nil && evaluated.Type() == object.ERROR_OBJ {
 		return fmt.Errorf("runtime error in include %s: %s", chosen, evaluated.Inspect())
@@ -220,22 +202,18 @@ func ExecuteFile(filename string, out io.Writer) error {
 		return fmt.Errorf("Could not open file %s: %v", filename, err)
 	}
 	defer file.Close()
-
 	// Read the entire file content
 	content, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("Could not read file %s: %v", filename, err)
 	}
-
 	// We'll compile & run the file one complete statement at a time,
 	// preserving compiler state and globals between statements (like main.go).
-
 	// Build an initial symbol table and register builtins and class names
 	symbolTable := compiler.NewSymbolTable()
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
-
 	// Register class objects in the symbol table and pre-seed globals
 	globals := make([]object.Object, vm.GlobalsSize)
 	classes := object.CreateClassObjects()
@@ -246,25 +224,19 @@ func ExecuteFile(filename string, out io.Writer) error {
 			globals[sym.Index] = classObj
 		}
 	}
-
 	constants := []object.Object{}
-
 	// Read the file and execute complete statements
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	var currentStatement strings.Builder
-
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
-
 		currentStatement.WriteString(line)
-
 		if !needsContinuation(currentStatement.String()) {
 			stmt := currentStatement.String()
 			currentStatement.Reset()
-
 			// Handle include inline (keeps existing include behavior)
 			if incPath, ok := tryParseInclude(stmt); ok {
 				if err := executeInclude(incPath, object.NewEnvironment(), out); err != nil {
@@ -273,7 +245,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 				}
 				continue
 			}
-
 			l := lexer.New(stmt)
 			p := parser.New(l)
 			program := p.ParseProgram()
@@ -281,14 +252,12 @@ func ExecuteFile(filename string, out io.Writer) error {
 				printParserErrors(out, p.Errors())
 				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
 			}
-
 			// Compile the current statement only into a temporary compiler
 			// that shares the global symbol table and current constants.
 			tmp := compiler.NewWithState(symbolTable, constants)
 			if err := tmp.Compile(program); err != nil {
 				return fmt.Errorf("Compilation error in file %s: %v", filename, err)
 			}
-
 			// Seed any undefined globals discovered during this statement's
 			// compilation so runtime accesses will produce Error objects with
 			// file/line info instead of causing unexpected instant exits.
@@ -296,7 +265,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 				if e == nil {
 					continue
 				}
-
 				// If the current statement is a `suppress` wrapping a
 				// let-declaration, avoid seeding undefined globals that
 				// originated on that same line. This prevents suppressed
@@ -310,22 +278,18 @@ func ExecuteFile(filename string, out io.Writer) error {
 						}
 					}
 				}
-
 				if e.Filename == "" {
 					e.Filename = filename
 				}
 				globals[idx] = e
 			}
-
 			bytecode := tmp.Bytecode()
 			constants = bytecode.Constants
-
 			machine := vm.NewWithGlobalsStore(bytecode, globals)
 			if err := machine.Run(); err != nil {
 				io.WriteString(out, err.Error()+"\n")
 				return err
 			}
-
 			// Process all include directives produced by this statement in-order.
 			for _, directive := range machine.DrainIncludeDirectives() {
 				if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
@@ -333,7 +297,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 					return err
 				}
 			}
-
 			// Print normal statement result if any (include directives are side effects).
 			if last := machine.LastPoppedStackElem(); last != nil {
 				if _, ok := last.(*object.IncludeDirective); ok {
@@ -347,11 +310,9 @@ func ExecuteFile(filename string, out io.Writer) error {
 			currentStatement.WriteString("\n")
 		}
 	}
-
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("Error reading file %s: %v", filename, err)
 	}
-
 	// Handle any remaining statement
 	if currentStatement.Len() > 0 {
 		stmt := currentStatement.String()
@@ -362,7 +323,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 			}
 			return nil
 		}
-
 		l := lexer.New(stmt)
 		p := parser.New(l)
 		program := p.ParseProgram()
@@ -370,21 +330,18 @@ func ExecuteFile(filename string, out io.Writer) error {
 			printParserErrors(out, p.Errors())
 			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
 		}
-
 		// Final statement: compile only this statement into a temporary
 		// compiler so we don't rerun previously-compiled code.
 		tmp := compiler.NewWithState(symbolTable, constants)
 		if err := tmp.Compile(program); err != nil {
 			return fmt.Errorf("Compilation error in file %s: %v", filename, err)
 		}
-
 		bytecode := tmp.Bytecode()
 		machine := vm.NewWithGlobalsStore(bytecode, globals)
 		if err := machine.Run(); err != nil {
 			io.WriteString(out, err.Error()+"\n")
 			return err
 		}
-
 		// Process include directives emitted by the final statement too.
 		for _, directive := range machine.DrainIncludeDirectives() {
 			if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
@@ -392,7 +349,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 				return err
 			}
 		}
-
 		if last := machine.LastPoppedStackElem(); last != nil {
 			if _, ok := last.(*object.IncludeDirective); ok {
 				return nil
@@ -402,7 +358,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -419,7 +374,6 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 		candidates = append(candidates, filepath.Join(filepath.Dir(caller), "lib", normalized))
 	}
 	candidates = append(candidates, filepath.Join("lib", normalized))
-
 	var content []byte
 	var err error
 	var chosen string
@@ -432,7 +386,6 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 	if chosen == "" {
 		return fmt.Errorf("Failed to read include file '%s': file not found", directive.Filename)
 	}
-
 	// SQX plugins are JSON manifests for external command-backed functions.
 	// Load them directly into a namespace hash without evaluator parsing.
 	if strings.EqualFold(filepath.Ext(chosen), ".sqx") {
@@ -440,7 +393,6 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 		if err != nil {
 			return fmt.Errorf("SQX load error in '%s': %v", directive.Filename, err)
 		}
-
 		ns := symbolTable.Define(directive.Namespace)
 		if ns.Index < len(globals) {
 			globals[ns.Index] = nsHash
@@ -448,21 +400,17 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 		object.RegisterNamespace(directive.Namespace, nsHash)
 		return nil
 	}
-
 	content, err = os.ReadFile(chosen)
 	if err != nil {
 		return fmt.Errorf("Failed to read include file '%s': %v", chosen, err)
 	}
-
 	// Parse the file
 	l := lexer.New(string(content))
 	p := parser.New(l)
 	program := p.ParseProgram()
-
 	if len(p.Errors()) != 0 {
 		return fmt.Errorf("Parse errors in '%s': %v", directive.Filename, p.Errors())
 	}
-
 	// Create a new environment for the included file
 	// Seed it with all class objects and builtins
 	includeEnv := object.NewEnvironment()
@@ -470,23 +418,19 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 	for className, classObj := range classes {
 		includeEnv.Set(className, classObj)
 	}
-
 	// Evaluate the program in this new environment
 	evalResult := evaluator.Eval(program, includeEnv)
 	if evalResult != nil && evalResult.Type() == object.ERROR_OBJ {
 		return fmt.Errorf("Evaluation error in '%s': %v", directive.Filename, evalResult)
 	}
-
 	// Extract all functions and variables from the environment and create a namespace Hash
 	nsHash := &object.Hash{Pairs: make(map[object.HashKey]object.HashPair)}
-
 	storeContents := includeEnv.GetStore()
 	for name, obj := range storeContents {
 		// Skip built-in classes - only include user-defined objects
 		if _, isBuiltin := classes[name]; isBuiltin {
 			continue
 		}
-
 		// Include Functions and Builtins (match REPL behavior)
 		switch obj.(type) {
 		case *object.Function, *object.Builtin, *object.Closure:
@@ -494,15 +438,26 @@ func executeIncludeDirective(directive *object.IncludeDirective, symbolTable *co
 			nsHash.Pairs[key.HashKey()] = object.HashPair{Key: key, Value: obj}
 		}
 	}
-
 	// Register the namespace as a variable in the symbol table and globals
 	ns := symbolTable.Define(directive.Namespace)
 	if ns.Index < len(globals) {
 		globals[ns.Index] = nsHash
 	}
-
 	// Also register the namespace globally so sys.list() can find it
 	object.RegisterNamespace(directive.Namespace, nsHash)
-
 	return nil
+}
+
+func StartWithSignalHandling(in io.Reader, out io.Writer) {
+	go func() {
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+		for range signalChan {
+			fmt.Fprintln(out, "\nExiting REPL...")
+			os.Exit(0)
+		}
+	}()
+
+	Start(in, out)
 }
