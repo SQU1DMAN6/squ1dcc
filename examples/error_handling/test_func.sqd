@@ -1,0 +1,17 @@
+safeArrayGet >> (arr, index) {
+    return {
+        "ok": true,
+        "value": arr[index],
+        "error": null
+    }
+}
+
+io.echo("Function defined\n")
+
+var arr = [10, 20, 30]
+io.echo("Array created\n")
+
+var result = safeArrayGet(arr, 0)
+io.echo("Function called\n")
+io.echo(result.value)
+io.echo("\n")

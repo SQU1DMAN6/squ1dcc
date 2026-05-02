@@ -665,4 +665,4 @@ Namespace imports from `pkg.include(path, namespace)` currently use the evaluato
 
 ---
 
-_SQU1D++ SQU1DLang Compiler, version 1.7.0, written by Quan Thai._
+_SQU1D++ SQU1DLang Compiler, version 1.8.0, written by Quan Thai._

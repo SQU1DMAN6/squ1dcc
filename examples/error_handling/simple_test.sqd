@@ -1,0 +1,36 @@
+countItems >> (arr) {
+    var i = 0
+    var total = array.cat(arr)
+
+    while (i < total) {
+        i = i + 1
+    }
+
+    return {
+        "ok": true,
+        "value": i,
+        "error": null
+    }
+}
+
+io.echo(countItems([1,2,3,4]).value)
+
+validateSize >> (arr) {
+    var size = array.cat(arr)
+
+    if (size == 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Empty array"
+        }
+    }
+
+    return {
+        "ok": true,
+        "value": size,
+        "error": null
+    }
+}
+
+validateSize([3, 4, 5, "Hello"])

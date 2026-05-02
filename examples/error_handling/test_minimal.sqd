@@ -1,0 +1,10 @@
+test >> (x) {
+    if (x < 5) {
+        return 1
+    }
+    return 2
+}
+
+var result = test(3)
+io.echo(result)
+io.echo("\n")

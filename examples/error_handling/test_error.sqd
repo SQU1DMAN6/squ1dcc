@@ -1,0 +1,20 @@
+# Test error handling
+divide >> (a, b) {
+    if (b == 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Division by zero"
+        }
+    }
+
+    return {
+        "ok": true,
+        "value": a / b,
+        "error": null
+    }
+}
+
+var result = divide(10, 2)
+io.echo(result.ok)
+io.echo("\n")

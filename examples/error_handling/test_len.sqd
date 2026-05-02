@@ -1,0 +1,10 @@
+var arr = [10, 20, 30]
+
+test >> (a) {
+    var length = len(a)
+    return length
+}
+
+var result = test(arr)
+io.echo(result)
+io.echo("\n")

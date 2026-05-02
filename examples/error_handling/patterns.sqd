@@ -1,0 +1,269 @@
+# Error Handling Pattern Examples
+# Demonstration of various error handling scenarios
+
+# ============================================================================
+# Pattern 1: Simple Result Checking
+# ============================================================================
+
+safeSqrt >> (x) {
+    if (x < 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Cannot take square root of negative number"
+        }
+    }
+    
+    return {
+        "ok": true,
+        "value": x,
+        "error": null
+    }
+}
+
+io.echo("PATTERN 1: Simple Result Checking\n")
+io.echo("---\n")
+
+var sqrtResult = safeSqrt(9)
+if (sqrtResult.ok) {
+    io.echo("Computed value: ")
+    io.echo(sqrtResult.value)
+    io.echo("\n")
+} el {
+    io.echo("Computation failed: ")
+    io.echo(sqrtResult.error)
+    io.echo("\n")
+}
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 2: Nested Error Handling
+# ============================================================================
+
+multiply >> (a, b) {
+    return {
+        "ok": true,
+        "value": a * b,
+        "error": null
+    }
+}
+
+io.echo("PATTERN 2: Nested Error Handling\n")
+io.echo("---\n")
+
+var val1 = safeSqrt(16)
+if (val1.ok) {
+    var val2 = safeSqrt(25)
+    if (val2.ok) {
+        var product = multiply(val1.value, val2.value)
+        io.echo("Product: ")
+        io.echo(product.value)
+        io.echo("\n")
+    } el {
+        io.echo("Second computation failed\n")
+    }
+} el {
+    io.echo("First computation failed\n")
+}
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 3: Conditional Error Handling
+# ============================================================================
+
+divide >> (a, b) {
+    if (b == 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Cannot divide by zero"
+        }
+    }
+    
+    return {
+        "ok": true,
+        "value": a / b,
+        "error": null
+    }
+}
+
+io.echo("PATTERN 3: Conditional Error Handling\n")
+io.echo("---\n")
+
+var divisor = 5
+var divideResult = divide(100, divisor)
+
+if (divideResult.ok) {
+    if (divideResult.value > 10) {
+        io.echo("Result is large: ")
+        io.echo(divideResult.value)
+        io.echo("\n")
+    } el {
+        io.echo("Result is small: ")
+        io.echo(divideResult.value)
+        io.echo("\n")
+    }
+} el {
+    io.echo("Division failed: ")
+    io.echo(divideResult.error)
+    io.echo("\n")
+}
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 4: Default Values on Error
+# ============================================================================
+
+io.echo("PATTERN 4: Default Values on Error\n")
+io.echo("---\n")
+
+var riskySqrt = safeSqrt(-4)
+var value = null
+
+if (riskySqrt.ok) {
+    value = riskySqrt.value
+} el {
+    value = 0
+    io.echo("Using default value: 0\n")
+}
+
+io.echo("Final value: ")
+io.echo(value)
+io.echo("\n")
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 5: Error Propagation
+# ============================================================================
+
+squareAndDivide >> (x, divisor) {
+    var squared = x * x
+    
+    if (divisor == 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Divisor cannot be zero"
+        }
+    }
+    
+    return {
+        "ok": true,
+        "value": squared / divisor,
+        "error": null
+    }
+}
+
+io.echo("PATTERN 5: Error Propagation\n")
+io.echo("---\n")
+
+var operation = squareAndDivide(5, 0)
+
+if (operation.ok) {
+    io.echo("Result: ")
+    io.echo(operation.value)
+    io.echo("\n")
+} el {
+    io.echo("Operation failed: ")
+    io.echo(operation.error)
+    io.echo("\n")
+}
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 6: Multiple Error Types
+# ============================================================================
+
+process >> (data, multiplier) {
+    if (type.tp(data) != "Integer") {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Data must be an integer"
+        }
+    }
+    
+    if (multiplier < 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Multiplier must be non-negative"
+        }
+    }
+    
+    return {
+        "ok": true,
+        "value": data * multiplier,
+        "error": null
+    }
+}
+
+io.echo("PATTERN 6: Multiple Error Types\n")
+io.echo("---\n")
+
+var test1 = process(10, 5)
+io.echo("Test 1: ")
+if (test1.ok) {
+    io.echo("Success - ")
+    io.echo(test1.value)
+} el {
+    io.echo("Failed - ")
+    io.echo(test1.error)
+}
+io.echo("\n")
+
+var test2 = process(10, -5)
+io.echo("Test 2: ")
+if (test2.ok) {
+    io.echo("Success")
+} el {
+    io.echo("Failed - ")
+    io.echo(test2.error)
+}
+io.echo("\n")
+
+io.echo("\n")
+
+# ============================================================================
+# Pattern 7: Using Shorthand (Method 3)
+# ============================================================================
+
+io.echo("PATTERN 7: Shorthand Error Checking\n")
+io.echo("---\n")
+
+var shortResult = divide(50, 5)
+
+if (<< shortResult == null) {
+    io.echo("No error, value is: ")
+    io.echo(shortResult.value)
+    io.echo("\n")
+} el {
+    io.echo("Error occurred: ")
+    io.echo(shortResult.error)
+    io.echo("\n")
+}
+
+io.echo("\n")
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+io.echo("===============================================\n")
+io.echo("ERROR HANDLING PATTERNS DEMONSTRATED:\n")
+io.echo("===============================================\n")
+io.echo("1. Simple result checking with if-else\n")
+io.echo("2. Nested error handling with multiple checks\n")
+io.echo("3. Conditional logic based on success\n")
+io.echo("4. Default values on error\n")
+io.echo("5. Error propagation through calls\n")
+io.echo("6. Multiple error types/conditions\n")
+io.echo("7. Shorthand checking with <<\n")
+io.echo("\nAll patterns follow the standard:\n")
+io.echo("Store result -> Check .ok -> Handle accordingly\n")
+io.echo("===============================================\n")

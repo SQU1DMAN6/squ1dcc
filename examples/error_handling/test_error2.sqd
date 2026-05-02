@@ -1,0 +1,45 @@
+# SQU1DLANG ERROR HANDLING STANDARD
+# All fallible functions return: { "ok": boolean, "value": any, "error": str|null }
+
+# Example 1: Divide function
+divide >> (a, b) {
+    if (b == 0) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Division by zero"
+        }
+    }
+
+    return {
+        "ok": true,
+        "value": {
+            "quotient": a / b,
+            "remainder": a % b
+        },
+        "error": null
+    }
+}
+
+# Example 2: Parse integer function
+parseInt >> (str) {
+    var result = type.s2i(str)
+    
+    if (type.tp(result) == "Error") {
+        return {
+            "ok": false,
+            "value": null,
+            "error": result
+        }
+    }
+    
+    return {
+        "ok": true,
+        "value": result,
+        "error": null
+    }
+}
+
+var result = divide(51, 3)
+io.echo(result.ok)
+io.echo("\n")

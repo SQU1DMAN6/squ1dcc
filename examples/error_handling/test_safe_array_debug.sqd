@@ -1,0 +1,47 @@
+safeArrayGet >> (arr, index) {
+    io.echo("In safeArrayGet\n")
+    io.echo("Checking type\n")
+    
+    if (type.tp(arr) != "Array") {
+        io.echo("Not an array\n")
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Input must be an Array"
+        }
+    }
+    
+    io.echo("Type OK\n")
+    
+    if (index < 0) {
+        io.echo("Negative index\n")
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Index cannot be negative"
+        }
+    }
+    
+    io.echo("Index check 1 OK\n")
+    
+    if (index >= len(arr)) {
+        io.echo("Out of bounds\n")
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Index out of bounds"
+        }
+    }
+    
+    io.echo("Returning value\n")
+    
+    return {
+        "ok": true,
+        "value": arr[index],
+        "error": null
+    }
+}
+
+var arr = [10, 20, 30, 40]
+var getResult = safeArrayGet(arr, 2)
+io.echo("Got result\n")

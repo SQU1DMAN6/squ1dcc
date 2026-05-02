@@ -1,0 +1,49 @@
+io.echo("About to define safeArrayGet\n")
+
+safeArrayGet >> (arr, index) {
+    io.echo("Inside safeArrayGet\n")
+    
+    var arrType = type.tp(arr)
+    io.echo("Array type: ")
+    io.echo(arrType)
+    io.echo("\n")
+    
+    if (arrType != "Array") {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Not an array"
+        }
+    }
+    
+    io.echo("Passed type check\n")
+    
+    var len_arr = len(arr)
+    io.echo("Array length: ")
+    io.echo(len_arr)
+    io.echo("\n")
+    
+    if (index >= len_arr) {
+        return {
+            "ok": false,
+            "value": null,
+            "error": "Out of bounds"
+        }
+    }
+    
+    io.echo("Passed length check\n")
+    
+    return {
+        "ok": true,
+        "value": arr[index],
+        "error": null
+    }
+}
+
+io.echo("Defined safeArrayGet\n")
+
+var arr = [10, 20, 30, 40]
+io.echo("Created array\n")
+
+var getResult = safeArrayGet(arr, 2)
+io.echo("Called function\n")
