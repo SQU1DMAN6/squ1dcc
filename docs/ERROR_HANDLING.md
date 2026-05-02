@@ -227,7 +227,7 @@ if (<< result == null) {
 }
 ```
 
-### `<<<` Operator (OK Pipe) - Future
+### `<<<` Operator (OK Pipe)
 
 Will extract the `ok` field value for convenience:
 
@@ -254,10 +254,6 @@ Run tests with:
 ```bash
 ./squ1dcc examples/error_handling/main.sqd
 ```
-
-## Known Limitations
-
-1. **`len()` builtin in `>>` functions**: Currently, the `len()` builtin is not accessible within functions defined using the `>>` syntax. This is a known issue being tracked for fix.
 
 ## Summary
 

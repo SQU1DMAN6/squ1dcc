@@ -163,7 +163,7 @@ def(x, y) {
 Functions are first-class objects and can be passed as arguments if one wishes to call them later:
 
 ```squ1d
-var apply = def(fn, x, y) {
+apply >> (fn, x, y) {
     return fn(x, y);
 }
 
@@ -237,6 +237,7 @@ Note that `while (true)` loops should still have an exit condition. Runtime guar
 ### Unblock
 
 The `unblock` keyword allows the code to continue executing even if a function returns an error.
+The `unblock` keyword must be followed with a `var` keyword.
 
 ```squ1d
 unblock var x = def() { return y }
@@ -244,26 +245,36 @@ unblock var x = def() { return y }
 io.echo("Hi")
 ```
 
-### Error Pipe
+### Error Pipe Operator
 
-The error pipe keyword (`<<`) is used to retrieve the error returned by a function instead of its value.
+The `<<` keyword extracts the error value from a result object. Returns the error if present, or NULL if no error.
 
-```squ1d
-unblock var func = def() { return y }
-unblock var y = << func()
-io.echo(y)
+```sqd
+var result = divide(10, 0)
+
+if (<< result == null) {
+    # No error
+} el {
+    # Error occurred
+}
 ```
 
-If the function executes successfully, the error pipe returns `null`.
+### OK Pipe Operator
 
-```squ1d
-var func = def() { return 20 }
-var y = << func()
-var z = func()
+The `<<<` keyword will extract the `ok` field value (boolean) for convenience:
 
-io.echo(y) # null
-io.echo(z) # 20
+```sqd
+var result = divide(10, 2)
+
+if (<<< result) {
+    # ok == true
+} el {
+    # ok == false
+}
 ```
+
+Note that the OK and Error pipes are shorthands to access the `ok` and `error` fields of the hash returned. If needed, a user can still access these fields
+using `.ok`, `.error`, `["ok"]`, or `["error"]`. It is often recommended to use the pipe operators for greater simplicity.
 
 ## Performance
 
@@ -415,7 +426,7 @@ var greeting = "Hello" + " " + "World";
 ### Array Processing
 
 ```squ1d
-var sumArray = def (arr) {
+sumArray >> (arr) {
     var total = 0;
     var i = 0;
     while (i < array.cat(arr)) {
@@ -584,8 +595,8 @@ This is the recommended way to structure modular code. Top-level functions in th
 **Example library file (`lib/math_utils.sqd`):**
 
 ```squ1d
-var add = def(a, b) { a + b };
-var max = def(arr) { 
+add >> (a, b) { a + b };
+max >> (arr) { 
     var m = arr[0];
     var i = 1;
     while (i < array.cat(arr)) {
