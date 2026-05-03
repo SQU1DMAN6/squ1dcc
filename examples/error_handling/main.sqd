@@ -1,0 +1,29 @@
+divide >> (a, b) {
+    if (b == 0) {
+        return {"ok": false, "error": "Division by zero"}
+    }
+    return {"ok": true, "result": a / b}
+}
+
+var tests = [
+    {"a": 10, "b": 2},
+    {"a": 5, "b": 0},
+    {"a": 9, "b": 3}
+]
+
+var i = 0
+while (i < array.cat(tests)) {
+    var test = tests[i]
+
+    unblock var res = divide(test["a"], test["b"])
+
+    if (<<< res) {
+        io.echo("Result of ", test["a"], "/", test["b"], " = ", res["result"], "\n")
+    } el {
+        io.echo("Error dividing ", test["a"], "/", test["b"], ": ", << res, "\n")
+    }
+
+    suppress i = i + 1
+}
+
+io.echo("Done testing error handling!\n")
