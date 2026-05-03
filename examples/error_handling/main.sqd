@@ -2,7 +2,7 @@ divide >> (a, b) {
     if (b == 0) {
         return {"ok": false, "error": "Division by zero"}
     }
-    return {"ok": true, "result": a / b}
+    return {"ok": true, "value": a / b}
 }
 
 var tests = [
@@ -15,15 +15,15 @@ var i = 0
 while (i < array.cat(tests)) {
     var test = tests[i]
 
-    unblock var res = divide(test["a"], test["b"])
+    var res = divide(test.a, test.b)
 
     if (<<< res) {
-        io.echo("Result of ", test["a"], "/", test["b"], " = ", res["result"], "\n")
+        io.echo("Result of", test.a, "/", test.b, "=", res.value, "\n")
     } el {
-        io.echo("Error dividing ", test["a"], "/", test["b"], ": ", << res, "\n")
+        io.echo("Error dividing", test.a, "/", test.a, ":", << res, "\n")
     }
 
-    suppress i = i + 1
+    i = i + 1
 }
 
 io.echo("Done testing error handling!\n")
