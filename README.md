@@ -138,6 +138,7 @@ var functionName = def(a, b) {
 ```
 
 New form from SQU1DLang 1.5
+```
 functionName >> (a, b) {
     return a + b
 }
