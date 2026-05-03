@@ -1,2 +1,0 @@
-var x = 0xFF;
-io.print(x);
