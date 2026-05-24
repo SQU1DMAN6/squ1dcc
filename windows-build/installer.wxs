@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+      Name="SQU1DCC"
+      Manufacturer="Quan Thai"
+      Version="1.8.0"
+      UpgradeCode="a3c65d17-5d9b-4eb1-90ed-0ead17202e57">
+
+    <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" />
+
+    <MajorUpgrade
+        DowngradeErrorMessage="A newer version of SQU1DCC is already installed." />
+
+    <Feature Id="MainFeature" Title="SQU1DCC">
+
+      <ComponentGroupRef Id="ProductComponents"/>
+
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+
+      <Directory Id="INSTALLFOLDER" Name="SQU1DCC">
+
+        <Component Id="MainExecutable" Guid="*">
+
+          <File
+              Id="Squ1dccExe"
+              Source="output\squ1dcc.exe"
+              KeyPath="yes" />
+
+          <Environment
+              Id="AddToPath"
+              Name="PATH"
+              Value="[INSTALLFOLDER]"
+              Part="last"
+              Action="set"
+              System="yes" />
+
+        </Component>
+
+      </Directory>
+
+    </StandardDirectory>
+
+  </Package>
+
+  <Fragment>
+
+    <ComponentGroup Id="ProductComponents">
+
+      <ComponentRef Id="MainExecutable"/>
+
+    </ComponentGroup>
+
+  </Fragment>
+
+</Wix>
