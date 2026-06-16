@@ -5,7 +5,7 @@
   <Package
       Name="SQU1DCC"
       Manufacturer="Quan Thai"
-      Version="1.8.0"
+      Version="1.9.0"
       UpgradeCode="a3c65d17-5d9b-4eb1-90ed-0ead17202e57">
 
     <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" />

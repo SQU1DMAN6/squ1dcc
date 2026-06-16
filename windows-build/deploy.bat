@@ -32,7 +32,7 @@ cd ..\windows-build
 echo.
 echo Building MSI installer...
 
-wix build installer.wxs -o SQU1DCC-1.8.0-Installer-x64.msi
+wix build installer.wxs -o SQU1DCC-1.9.0-Installer-x64.msi
 
 if %errorlevel% neq 0 (
     echo.
