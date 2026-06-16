@@ -193,28 +193,31 @@ func executeInclude(path string, env *object.Environment, out io.Writer) error {
 	return nil
 }
 
+// ExecuteFile reads and executes a .sqd file, compiling one statement at a time
+// while preserving global state between statements. Error line/column positions
+// are reported relative to the start of the file by tracking cumulative line offsets.
 func ExecuteFile(filename string, out io.Writer) error {
 	// Ensure builtins write to the provided writer so file execution prints
 	// are captured by callers (tests, CLI, etc.).
 	object.OutWriter = out
+
 	file, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("Could not open file %s: %v", filename, err)
 	}
 	defer file.Close()
-	// Read the entire file content
+
 	content, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("Could not read file %s: %v", filename, err)
 	}
-	// We'll compile & run the file one complete statement at a time,
-	// preserving compiler state and globals between statements (like main.go).
-	// Build an initial symbol table and register builtins and class names
+
+	// Build initial symbol table and register builtins and class names
 	symbolTable := compiler.NewSymbolTable()
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
-	// Register class objects in the symbol table and pre-seed globals
+
 	globals := make([]object.Object, vm.GlobalsSize)
 	classes := object.CreateClassObjects()
 	classNames := []string{"io", "type", "time", "os", "math", "string", "file", "pkg", "array", "sys", "keyboard"}
@@ -225,12 +228,15 @@ func ExecuteFile(filename string, out io.Writer) error {
 		}
 	}
 	constants := []object.Object{}
+	lineOffset := 0
+
 	// Read the file and execute complete statements
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	var currentStatement strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(strings.TrimSpace(line)) == 0 {
+			lineOffset++
 			continue
 		}
 		currentStatement.WriteString(line)
@@ -239,6 +245,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 			currentStatement.Reset()
 			// Handle include inline (keeps existing include behavior)
 			if incPath, ok := tryParseInclude(stmt); ok {
+				lineOffset++
 				if err := executeInclude(incPath, object.NewEnvironment(), out); err != nil {
 					fmt.Fprintf(out, "Include error: %v\n", err)
 					return err
@@ -252,25 +259,17 @@ func ExecuteFile(filename string, out io.Writer) error {
 				printParserErrors(out, p.Errors())
 				return fmt.Errorf("Parsing errors in file %s:\t%v\n", filename, p.Errors())
 			}
-			// Compile the current statement only into a temporary compiler
-			// that shares the global symbol table and current constants.
+			// Compile the current statement only
 			tmp := compiler.NewWithState(symbolTable, constants)
+			tmp.LineOffset = lineOffset
 			if err := tmp.Compile(program); err != nil {
 				return fmt.Errorf("Compilation error in file %s: %v", filename, err)
 			}
-			// Seed any undefined globals discovered during this statement's
-			// compilation so runtime accesses will produce Error objects with
-			// file/line info instead of causing unexpected instant exits.
+			// Seed any undefined globals discovered during this statement's compilation
 			for idx, e := range tmp.UndefinedGlobals() {
 				if e == nil {
 					continue
 				}
-				// If the current statement is a `suppress` wrapping a
-				// let-declaration, avoid seeding undefined globals that
-				// originated on that same line. This prevents suppressed
-				// definitions from causing immediate prints at definition
-				// time; the entries will be seeded before the next
-				// statement execution (the loop seeds every iteration).
 				if ss, ok := program.Statements[0].(*ast.SuppressStatement); ok {
 					if ls, ok2 := ss.Statement.(*ast.LetStatement); ok2 {
 						if e.Line == ls.Token.Line {
@@ -278,6 +277,8 @@ func ExecuteFile(filename string, out io.Writer) error {
 						}
 					}
 				}
+				// Adjust line to be file-relative by adding the accumulated line offset
+				e.Line = e.Line + lineOffset
 				if e.Filename == "" {
 					e.Filename = filename
 				}
@@ -297,7 +298,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 					return err
 				}
 			}
-			// Print normal statement result if any (include directives are side effects).
+			// Print normal statement result if any
 			if last := machine.LastPoppedStackElem(); last != nil {
 				if _, ok := last.(*object.IncludeDirective); ok {
 					continue
@@ -309,6 +310,7 @@ func ExecuteFile(filename string, out io.Writer) error {
 		} else {
 			currentStatement.WriteString("\n")
 		}
+		lineOffset++
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("Error reading file %s: %v", filename, err)
@@ -330,11 +332,20 @@ func ExecuteFile(filename string, out io.Writer) error {
 			printParserErrors(out, p.Errors())
 			return fmt.Errorf("Parsing errors in file %s: %v", filename, p.Errors())
 		}
-		// Final statement: compile only this statement into a temporary
-		// compiler so we don't rerun previously-compiled code.
 		tmp := compiler.NewWithState(symbolTable, constants)
 		if err := tmp.Compile(program); err != nil {
 			return fmt.Errorf("Compilation error in file %s: %v", filename, err)
+		}
+		// Adjust undefined globals for remaining statement
+		for idx, e := range tmp.UndefinedGlobals() {
+			if e == nil {
+				continue
+			}
+			e.Line = e.Line + lineOffset
+			if e.Filename == "" {
+				e.Filename = filename
+			}
+			globals[idx] = e
 		}
 		bytecode := tmp.Bytecode()
 		machine := vm.NewWithGlobalsStore(bytecode, globals)
@@ -342,7 +353,6 @@ func ExecuteFile(filename string, out io.Writer) error {
 			io.WriteString(out, err.Error()+"\n")
 			return err
 		}
-		// Process include directives emitted by the final statement too.
 		for _, directive := range machine.DrainIncludeDirectives() {
 			if err := executeIncludeDirective(directive, symbolTable, &constants, globals, filename, out); err != nil {
 				fmt.Fprintf(out, "Include error: %v\n", err)

@@ -9,10 +9,11 @@ import (
 )
 
 type LoopContext struct {
-	loopStartPos  int
-	breakJumps    []int
-	continueJumps []int
-	scopeIndex    int
+	loopStartPos    int
+	continueJumpPos int // where continue jumps to (defaults to loopStartPos for while)
+	breakJumps      []int
+	continueJumps   []int
+	scopeIndex      int
 }
 
 type Compiler struct {
@@ -34,6 +35,9 @@ type Compiler struct {
 	// a compile-time error. This is used for `suppress` so suppressed
 	// statements don't abort compilation on undefined names.
 	allowDeferredUndefinedGlobals bool
+	// LineOffset is added to any line numbers reported in compile errors.
+	// The file executor sets this so errors point to the correct file line.
+	LineOffset int
 }
 
 type EmittedInstruction struct {
@@ -86,10 +90,11 @@ func New() *Compiler {
 
 func (c *Compiler) enterLoop(loopStartPos int) {
 	c.loopContexts = append(c.loopContexts, LoopContext{
-		loopStartPos:  loopStartPos,
-		breakJumps:    []int{},
-		continueJumps: []int{},
-		scopeIndex:    c.scopeIndex,
+		loopStartPos:    loopStartPos,
+		continueJumpPos: loopStartPos, // default: continue jumps to loop start (while loops)
+		breakJumps:      []int{},
+		continueJumps:   []int{},
+		scopeIndex:      c.scopeIndex,
 	})
 }
 
@@ -107,9 +112,10 @@ func (c *Compiler) exitLoop() {
 		c.changeOperand(pos, afterLoopPos)
 	}
 
-	// Patch all continue jumps to jump to loop start
+	// Patch all continue jumps to jump to the continue target position
+	// (loopStartPos for while loops, updateTarget for for loops)
 	for _, pos := range loopCtx.continueJumps {
-		c.changeOperand(pos, loopCtx.loopStartPos)
+		c.changeOperand(pos, loopCtx.continueJumpPos)
 	}
 
 	// Remove the loop context
@@ -392,8 +398,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// Exit loop context (patches break/continue jumps)
 		c.exitLoop()
 
-		// Push null as the result of the while loop
-		c.emit(code.OpNull)
+		// WhileStatement is a statement form — no value pushed on stack
+		// (WhileExpression handles the value-producing case)
 
 	case *ast.LetStatement:
 		symbol := c.symbolTable.Define(node.Name.Value)
@@ -513,7 +519,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.ForStatement:
-		// For loops are compiled as: init; while(condition) { body; update; }
+		// For loops are compiled as:
+		//   init;
+		//   OpJump -> condCheck;          // skip update on first iteration
+		//   [continueTarget: update;]     // continue jumps here
+		//   [condCheck: condition;]       // top of loop
+		//   OpJumpNotTruthy -> afterLoop;
+		//   body;
+		//   OpJump -> continueTarget;
+		//   [afterLoop:]
 
 		// Compile initialization
 		if node.Init != nil {
@@ -526,8 +540,28 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
+		// Emit jump to bypass update on first iteration (patched later)
+		bypassUpdatePos := c.emit(code.OpJump, 9999)
+
+		// Record the update target position (where continue jumps to)
+		updateTarget := len(c.currentInstructions())
+
+		// Compile update expression
+		if node.Update != nil {
+			err := c.Compile(node.Update)
+			if err != nil {
+				return err
+			}
+			if c.lastInstructionIs(code.OpPop) {
+				c.removeLastPop()
+			}
+		}
+
+		// Condition check position (top of loop for re-entry)
 		loopStart := len(c.currentInstructions())
 		c.enterLoop(loopStart)
+		// Override continue target to point at the update expression
+		c.loopContexts[len(c.loopContexts)-1].continueJumpPos = updateTarget
 
 		// Compile condition (default to true if no condition)
 		if node.Condition != nil {
@@ -548,29 +582,20 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		// Compile update expression
-		if node.Update != nil {
-			err := c.Compile(node.Update)
-			if err != nil {
-				return err
-			}
-			if c.lastInstructionIs(code.OpPop) {
-				c.removeLastPop()
-			}
-		}
+		// Jump back to update target (re-evaluate condition + update)
+		c.emit(code.OpJump, updateTarget)
 
-		// Jump back to condition check
-		c.emit(code.OpJump, loopStart)
-
-		// Set jump target for when condition is false
+		// Set jump targets:
+		//   - bypassUpdatePos jumps to condCheck (loopStart) on first entry
+		//   - jumpNotTruthyPos jumps to afterLoop when condition is false
 		afterLoopPos := len(c.currentInstructions())
+		c.changeOperand(bypassUpdatePos, loopStart)
 		c.changeOperand(jumpNotTruthyPos, afterLoopPos)
 
 		// Exit loop context (patches break/continue jumps)
 		c.exitLoop()
 
-		// Push null as result
-		c.emit(code.OpNull)
+		// ForStatement is a statement form — no value pushed on stack
 
 	case *ast.FunctionLiteral:
 		c.enterScope()
@@ -832,7 +857,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 					Column:  node.Token.Column,
 				}
 			} else {
-				return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line, node.Token.Column, node.Value)
+				return fmt.Errorf("line %d, column %d: Undefined variable %s", node.Token.Line+c.LineOffset, node.Token.Column, node.Value)
 			}
 		}
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -12,15 +13,24 @@ type ReturnMode string
 
 const (
 	typedArgPrefix            = "__sqx_typed__:"
-	ReturnAuto     ReturnMode = "auto"
-	ReturnString   ReturnMode = "string"
-	ReturnRaw      ReturnMode = "raw"
-	ReturnInt      ReturnMode = "int"
-	ReturnFloat    ReturnMode = "float"
-	ReturnBool     ReturnMode = "bool"
-	ReturnNull     ReturnMode = "null"
-	ReturnJSON     ReturnMode = "json"
+	ReturnAuto       ReturnMode = "auto"
+	ReturnString     ReturnMode = "string"
+	ReturnRaw        ReturnMode = "raw"
+	ReturnInt        ReturnMode = "int"
+	ReturnFloat      ReturnMode = "float"
+	ReturnBool       ReturnMode = "bool"
+	ReturnNull       ReturnMode = "null"
+	ReturnJSON       ReturnMode = "json"
+	ReturnStructured ReturnMode = "structured"
 )
+
+// StructuredResult is the standard return contract for SQX functions.
+// All functions SHOULD return structured data in this format.
+type StructuredResult struct {
+	Ok    bool        `json:"ok"`
+	Value interface{} `json:"value"`
+	Error string      `json:"error"`
+}
 
 type Handler func(args []string) (interface{}, error)
 
@@ -71,7 +81,7 @@ func (m *Module) RegisterMany(methods ...Method) {
 
 func (m *Module) Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintf(stderr, "usage: %s <__sqx_manifest__|__sqx_call__>\n", m.name)
+		fmt.Fprintf(stderr, "usage: %s <__sqx_manifest__|__sqx_call__|--session>\n", m.name)
 		return 2
 	}
 
@@ -80,10 +90,22 @@ func (m *Module) Run(args []string, stdout, stderr io.Writer) int {
 		return m.writeManifest(stdout, stderr)
 	case "__sqx_call__":
 		return m.call(args[1:], stdout, stderr)
+	case "--session":
+		// Session mode: read JSON requests from stdin, write JSON responses to stdout.
+		// os.Stdin/os.Stdout are the actual pipes, but we pass the io.Writer/Reader
+		// from the caller (which may be piped in production).
+		// Use provided stdout, but read from the actual stdin for the session protocol.
+		return m.Serve(stdinForSession(stderr), stdout)
 	default:
 		fmt.Fprintf(stderr, "unknown SQX command: %s\n", args[0])
 		return 2
 	}
+}
+
+// stdinForSession returns an io.Reader for session mode.
+// In production, this returns os.Stdin. In tests, the caller can mock it.
+var stdinForSession = func(stderr io.Writer) io.Reader {
+	return os.Stdin
 }
 
 func (m *Module) writeManifest(stdout, stderr io.Writer) int {
@@ -123,15 +145,44 @@ func (m *Module) call(args []string, stdout, stderr io.Writer) int {
 
 	result, err := method.Handle(args[1:])
 	if err != nil {
+		// If structured mode, write structured error
+		if method.Return == ReturnStructured {
+			writeStructuredResult(stdout, "", err)
+			return 1
+		}
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}
 
 	if err := writeResult(stdout, method.Return, result); err != nil {
+		// If structured mode, try to write structured error
+		if method.Return == ReturnStructured {
+			writeStructuredResult(stdout, "", err)
+			return 1
+		}
 		fmt.Fprintf(stderr, "SQX result encode failed for %s: %v\n", fnName, err)
 		return 1
 	}
 	return 0
+}
+
+// writeStructuredResult writes a StructuredResult JSON to the writer.
+// If value is nil and err is non-nil, writes {ok:false, value:null, error:"..."}.
+// If value is non-nil and err is nil, writes {ok:true, value:..., error:null}.
+func writeStructuredResult(out io.Writer, value interface{}, err error) {
+	sr := StructuredResult{Ok: true, Value: nil, Error: ""}
+	if err != nil {
+		sr.Ok = false
+		sr.Value = nil
+		sr.Error = err.Error()
+	} else {
+		sr.Ok = true
+		sr.Value = value
+		sr.Error = ""
+	}
+	data, _ := json.Marshal(sr)
+	out.Write(data)
+	out.Write([]byte("\n"))
 }
 
 func writeResult(out io.Writer, mode ReturnMode, value interface{}) error {
@@ -182,6 +233,9 @@ func writeResult(out io.Writer, mode ReturnMode, value interface{}) error {
 		}
 		_, err = out.Write(data)
 		return err
+	case string(ReturnStructured):
+		writeStructuredResult(out, value, nil)
+		return nil
 	default:
 		return fmt.Errorf("unknown return mode %q", mode)
 	}
@@ -420,5 +474,68 @@ func ArgInt(args []string, index int) (int64, error) {
 		return i, nil
 	default:
 		return 0, fmt.Errorf("argument %d must be int", index)
+	}
+}
+
+// Serve listens for JSON requests on stdin and dispatches to registered methods,
+// writing JSON responses to stdout. This enables persistent session mode.
+// Format:
+//
+//	Request:  {"cmd":"call","fn":"func_name","args":[...]}
+//	Response: {"ok":true,"value":...,"error":null}
+func (m *Module) Serve(reader io.Reader, writer io.Writer) int {
+	decoder := json.NewDecoder(reader)
+	for {
+		var req struct {
+			Cmd  string          `json:"cmd"`
+			Fn   string          `json:"fn"`
+			Args json.RawMessage `json:"args"`
+		}
+
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				return 0
+			}
+			writeStructuredResult(writer, nil, fmt.Errorf("malformed request: %w", err))
+			continue
+		}
+
+		switch req.Cmd {
+		case "call":
+			var args []string
+			if req.Args != nil {
+				if err := json.Unmarshal(req.Args, &args); err != nil {
+					// Try as generic array and convert
+					var raw []interface{}
+					if err2 := json.Unmarshal(req.Args, &raw); err2 != nil {
+						writeStructuredResult(writer, nil, fmt.Errorf("invalid args: %w", err))
+						continue
+					}
+					args = make([]string, len(raw))
+					for i, v := range raw {
+						args[i] = fmt.Sprint(v)
+					}
+				}
+			}
+
+			method, ok := m.methods[req.Fn]
+			if !ok {
+				writeStructuredResult(writer, nil, fmt.Errorf("unknown SQX function: %s", req.Fn))
+				continue
+			}
+
+			result, err := method.Handle(args)
+			writeStructuredResult(writer, result, err)
+
+		case "ping":
+			// Health check
+			writeStructuredResult(writer, "pong", nil)
+
+		case "shutdown":
+			return 0
+
+		default:
+			writeStructuredResult(writer, nil, fmt.Errorf("unknown command: %s", req.Cmd))
+		}
 	}
 }

@@ -248,7 +248,9 @@ func normalizedModuleName(name string) string {
 
 const goMainTemplate = `package main
 
-import "os"
+import (
+	"os"
+)
 
 func main() {
 	module := NewSQXModule("{{.Name}}")
@@ -267,7 +269,25 @@ func main() {
 				return "{{.Name}} pong", nil
 			},
 		},
+		// Example of a structured-return method (SQX v1.9+):
+		// Returns {"ok":true,"value":...,"error":null} envelope.
+		// Use << (extract .error) and <<< (extract .ok) in SQU1DLang.
+		// SQXMethod{
+		// 	Name:   "greet",
+		// 	Return: SQXReturnStructured,
+		// 	Handle: func(args []string) (interface{}, error) {
+		// 		if err := SQXRequireArgs(args, 1); err != nil {
+		// 			return nil, err
+		// 		}
+		// 		return map[string]string{"message": "Hello, " + args[0] + "!"}, nil
+		// 	},
+		// },
 	)
+
+	// If --session flag is passed, enter session mode (persistent JSON protocol).
+	if len(os.Args) > 1 && os.Args[1] == "--session" {
+		os.Exit(module.Serve(os.Stdin, os.Stdout))
+	}
 
 	os.Exit(module.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -322,48 +342,41 @@ JSON
 esac
 `
 
-const cMainTemplate = `#include <stdio.h>
-#include <string.h>
+const cMainTemplate = `/*
+ * SQX Module — {{.Name}}
+ *
+ * Built with SQX Runtime Library (sqx_runtime.h)
+ * Implements the structured SQX v1.9 contract.
+ */
 
-static int handle_call(const char *fn, int argc, char **argv) {
-	(void)argv;
+#include "sqx_runtime.h"
 
-	// Add SQX function handlers here.
-	if (strcmp(fn, "ping") == 0) {
-		if (argc != 0) {
-			fprintf(stderr, "expected 0 argument(s), got %d\n", argc);
-			return 2;
-		}
-		printf("{{.Name}} pong");
-		return 0;
-	}
+/* ---- SQX Function Handlers ---- */
 
-	fprintf(stderr, "unknown SQX function: %s\n", fn);
-	return 2;
+/* ping() — returns "{{.Name}} pong" */
+static void cmd_ping(int argc, char **argv) {
+	(void)argc; (void)argv;
+	sqx_write_string("{{.Name}} pong");
 }
 
+/* echo(text) — returns the provided text back */
+static void cmd_echo(int argc, char **argv) {
+	if (argc < 1) {
+		sqx_write_error("echo requires 1 argument (text)");
+		return;
+	}
+	sqx_write_string(argv[0]);
+}
+
+/* ---- Manifest Declaration ---- */
+SQX_BEGIN_MANIFEST
+	SQX_REGISTER(ping, "string")
+	SQX_REGISTER(echo, "structured")
+SQX_END_MANIFEST
+
+/* ---- Main Entry Point ---- */
 int main(int argc, char **argv) {
-	if (argc < 2) {
-		fprintf(stderr, "usage: {{.Name}} <__sqx_manifest__|__sqx_call__>\n");
-		return 2;
-	}
-
-	if (strcmp(argv[1], "__sqx_manifest__") == 0) {
-		// Declare exported methods and return modes here.
-		printf("{\"version\":1,\"functions\":{\"ping\":{\"return\":\"string\"}}}");
-		return 0;
-	}
-
-	if (strcmp(argv[1], "__sqx_call__") == 0) {
-		if (argc < 3) {
-			fprintf(stderr, "missing SQX function name\n");
-			return 2;
-		}
-		return handle_call(argv[2], argc - 3, argv + 3);
-	}
-
-	fprintf(stderr, "unknown SQX command: %s\n", argv[1]);
-	return 2;
+	return sqx_main(argc, argv);
 }
 `
 
@@ -371,54 +384,64 @@ const cBuildTemplate = `#!/usr/bin/env bash
 set -euo pipefail
 
 OUT="${1:-{{.Name}}.sqx}"
-cc -O2 -o "$OUT" main.c
+SQX_RUNTIME_DIR="${SQX_RUNTIME_DIR:-}"
+if [ -z "$SQX_RUNTIME_DIR" ]; then
+	# Try to find sqx_runtime.h relative to this script
+	SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+	if [ -f "$SCRIPT_DIR/../../include/sqx_runtime.h" ]; then
+		SQX_RUNTIME_DIR="$SCRIPT_DIR/../../include"
+	elif [ -f "/usr/local/include/sqx_runtime.h" ]; then
+		SQX_RUNTIME_DIR="/usr/local/include"
+	else
+		SQX_RUNTIME_DIR="."
+	fi
+fi
+
+cc -O2 -I"$SQX_RUNTIME_DIR" -o "$OUT" main.c
 chmod +x "$OUT"
 echo "Built $OUT"
 `
 
-const cppMainTemplate = `#include <iostream>
-#include <string>
+const cppMainTemplate = `/*
+ * SQX Module — {{.Name}}
+ *
+ * Built with SQX Runtime Library (sqx_runtime.h)
+ * Implements the structured SQX v1.9 contract.
+ *
+ * COMPILE:
+ *   g++ -O2 -I/path/to/include -o {{.Name}}.sqx main.cpp
+ */
 
-static int handle_call(const std::string &fn, int argc, char **argv) {
-	(void)argv;
-
-	// Add SQX function handlers here.
-	if (fn == "ping") {
-		if (argc != 0) {
-			std::cerr << "expected 0 argument(s), got " << argc << "\n";
-			return 2;
-		}
-		std::cout << "{{.Name}} pong";
-		return 0;
-	}
-
-	std::cerr << "unknown SQX function: " << fn << "\n";
-	return 2;
+extern "C" {
+#include "sqx_runtime.h"
 }
 
+/* ---- SQX Function Handlers ---- */
+
+/* ping() — returns "{{.Name}} pong" */
+static void cmd_ping(int argc, char **argv) {
+	(void)argc; (void)argv;
+	sqx_write_string("{{.Name}} pong");
+}
+
+/* echo(text) — returns the provided text back */
+static void cmd_echo(int argc, char **argv) {
+	if (argc < 1) {
+		sqx_write_error("echo requires 1 argument (text)");
+		return;
+	}
+	sqx_write_string(argv[0]);
+}
+
+/* ---- Manifest Declaration ---- */
+SQX_BEGIN_MANIFEST
+	SQX_REGISTER(ping, "string")
+	SQX_REGISTER(echo, "structured")
+SQX_END_MANIFEST
+
+/* ---- Main Entry Point ---- */
 int main(int argc, char **argv) {
-	if (argc < 2) {
-		std::cerr << "usage: {{.Name}} <__sqx_manifest__|__sqx_call__>\n";
-		return 2;
-	}
-
-	const std::string command = argv[1];
-	if (command == "__sqx_manifest__") {
-		// Declare exported methods and return modes here.
-		std::cout << "{\"version\":1,\"functions\":{\"ping\":{\"return\":\"string\"}}}";
-		return 0;
-	}
-
-	if (command == "__sqx_call__") {
-		if (argc < 3) {
-			std::cerr << "missing SQX function name\n";
-			return 2;
-		}
-		return handle_call(argv[2], argc - 3, argv + 3);
-	}
-
-	std::cerr << "unknown SQX command: " << command << "\n";
-	return 2;
+	return sqx_main(argc, argv);
 }
 `
 
@@ -426,7 +449,19 @@ const cppBuildTemplate = `#!/usr/bin/env bash
 set -euo pipefail
 
 OUT="${1:-{{.Name}}.sqx}"
-c++ -O2 -o "$OUT" main.cpp
+SQX_RUNTIME_DIR="${SQX_RUNTIME_DIR:-}"
+if [ -z "$SQX_RUNTIME_DIR" ]; then
+	SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+	if [ -f "$SCRIPT_DIR/../../include/sqx_runtime.h" ]; then
+		SQX_RUNTIME_DIR="$SCRIPT_DIR/../../include"
+	elif [ -f "/usr/local/include/sqx_runtime.h" ]; then
+		SQX_RUNTIME_DIR="/usr/local/include"
+	else
+		SQX_RUNTIME_DIR="."
+	fi
+fi
+
+g++ -O2 -I"$SQX_RUNTIME_DIR" -o "$OUT" main.cpp
 chmod +x "$OUT"
 echo "Built $OUT"
 `
@@ -437,6 +472,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -444,16 +480,24 @@ import (
 type SQXReturnMode string
 
 const (
-	sqxTypedArgPrefix            = "__sqx_typed__:"
-	SQXReturnAuto   SQXReturnMode = "auto"
-	SQXReturnString SQXReturnMode = "string"
-	SQXReturnRaw    SQXReturnMode = "raw"
-	SQXReturnInt    SQXReturnMode = "int"
-	SQXReturnFloat  SQXReturnMode = "float"
-	SQXReturnBool   SQXReturnMode = "bool"
-	SQXReturnNull   SQXReturnMode = "null"
-	SQXReturnJSON   SQXReturnMode = "json"
+	sqxTypedArgPrefix             = "__sqx_typed__:"
+	SQXReturnAuto     SQXReturnMode = "auto"
+	SQXReturnString   SQXReturnMode = "string"
+	SQXReturnRaw      SQXReturnMode = "raw"
+	SQXReturnInt      SQXReturnMode = "int"
+	SQXReturnFloat    SQXReturnMode = "float"
+	SQXReturnBool     SQXReturnMode = "bool"
+	SQXReturnNull     SQXReturnMode = "null"
+	SQXReturnJSON     SQXReturnMode = "json"
+	SQXReturnStructured SQXReturnMode = "structured"
 )
+
+// SQXStructuredResult is the standard return contract for SQX functions (v1.9+).
+type SQXStructuredResult struct {
+	Ok    bool        ` + "`json:\"ok\"`" + `
+	Value interface{} ` + "`json:\"value\"`" + `
+	Error string      ` + "`json:\"error\"`" + `
+}
 
 type SQXHandler func(args []string) (interface{}, error)
 
@@ -495,7 +539,7 @@ func (m *SQXModule) RegisterMany(methods ...SQXMethod) {
 
 func (m *SQXModule) Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintf(stderr, "usage: %s <__sqx_manifest__|__sqx_call__>\n", m.name)
+		fmt.Fprintf(stderr, "usage: %s <__sqx_manifest__|__sqx_call__|--session>\n", m.name)
 		return 2
 	}
 
@@ -504,6 +548,8 @@ func (m *SQXModule) Run(args []string, stdout, stderr io.Writer) int {
 		return m.writeManifest(stdout, stderr)
 	case "__sqx_call__":
 		return m.call(args[1:], stdout, stderr)
+	case "--session":
+		return m.Serve(os.Stdin, stdout)
 	default:
 		fmt.Fprintf(stderr, "unknown SQX command: %s\n", args[0])
 		return 2
@@ -553,15 +599,39 @@ func (m *SQXModule) call(args []string, stdout, stderr io.Writer) int {
 
 	result, err := method.Handle(args[1:])
 	if err != nil {
+		if method.Return == SQXReturnStructured {
+			writeSQXStructuredResult(stdout, "", err)
+			return 1
+		}
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}
 
 	if err := writeSQXResult(stdout, method.Return, result); err != nil {
+		if method.Return == SQXReturnStructured {
+			writeSQXStructuredResult(stdout, "", err)
+			return 1
+		}
 		fmt.Fprintf(stderr, "SQX result encode failed: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+func writeSQXStructuredResult(out io.Writer, value interface{}, err error) {
+	sr := SQXStructuredResult{Ok: true, Value: nil, Error: ""}
+	if err != nil {
+		sr.Ok = false
+		sr.Value = nil
+		sr.Error = err.Error()
+	} else {
+		sr.Ok = true
+		sr.Value = value
+		sr.Error = ""
+	}
+	data, _ := json.Marshal(sr)
+	out.Write(data)
+	out.Write([]byte("\n"))
 }
 
 func writeSQXResult(out io.Writer, mode SQXReturnMode, value interface{}) error {
@@ -612,6 +682,9 @@ func writeSQXResult(out io.Writer, mode SQXReturnMode, value interface{}) error 
 		}
 		_, err = out.Write(data)
 		return err
+	case string(SQXReturnStructured):
+		writeSQXStructuredResult(out, value, nil)
+		return nil
 	default:
 		return fmt.Errorf("unknown SQX return mode %q", mode)
 	}
@@ -839,6 +912,59 @@ func SQXArgInt(args []string, index int) (int64, error) {
 		return i, nil
 	default:
 		return 0, fmt.Errorf("argument %d must be int", index)
+	}
+}
+
+// Serve listens for JSON requests on stdin and dispatches to registered methods.
+func (m *SQXModule) Serve(reader io.Reader, writer io.Writer) int {
+	decoder := json.NewDecoder(reader)
+	for {
+		var req struct {
+			Cmd  string          ` + "`json:\"cmd\"`" + `
+			Fn   string          ` + "`json:\"fn\"`" + `
+			Args json.RawMessage ` + "`json:\"args\"`" + `
+		}
+
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				return 0
+			}
+			writeSQXStructuredResult(writer, nil, fmt.Errorf("malformed request: %w", err))
+			continue
+		}
+
+		switch req.Cmd {
+		case "call":
+			var args []string
+			if req.Args != nil {
+				if err := json.Unmarshal(req.Args, &args); err != nil {
+					var raw []interface{}
+					if err2 := json.Unmarshal(req.Args, &raw); err2 != nil {
+						writeSQXStructuredResult(writer, nil, fmt.Errorf("invalid args: %w", err))
+						continue
+					}
+					args = make([]string, len(raw))
+					for i, v := range raw {
+						args[i] = fmt.Sprint(v)
+					}
+				}
+			}
+
+			method, ok := m.methods[req.Fn]
+			if !ok {
+				writeSQXStructuredResult(writer, nil, fmt.Errorf("unknown SQX function: %s", req.Fn))
+				continue
+			}
+
+			result, err := method.Handle(args)
+			writeSQXStructuredResult(writer, result, err)
+		case "ping":
+			writeSQXStructuredResult(writer, "pong", nil)
+		case "shutdown":
+			return 0
+		default:
+			writeSQXStructuredResult(writer, nil, fmt.Errorf("unknown command: %s", req.Cmd))
+		}
 	}
 }
 `

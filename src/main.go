@@ -70,7 +70,21 @@ func main() {
 
 	compileFlag := flag.Bool("B", false, "Build .sqd file to executable")
 	outputFlag := flag.String("o", "", "Output executable name (default: same as input file)")
+	sqxSessionFlag := flag.String("sqx-session", "auto", "SQX session mode: auto, always, legacy")
 	flag.Parse()
+
+	// Configure SQX session mode based on CLI flag
+	switch strings.ToLower(*sqxSessionFlag) {
+	case "always", "on", "true", "yes", "1":
+		object.CurrentSessionMode = object.SessionModeAlways
+	case "legacy", "off", "false", "no", "0":
+		object.CurrentSessionMode = object.SessionModeLegacy
+	default:
+		object.CurrentSessionMode = object.SessionModeAuto
+	}
+
+	// Ensure SQX sessions are cleaned up on exit
+	defer object.CloseAllSessions()
 
 	args := flag.Args()
 	builder.SetVerbosity(verbosity)
@@ -108,7 +122,7 @@ func main() {
 		}
 	} else {
 		// Interactive REPL mode
-		fmt.Printf("Hello %s! This is the SQU1D++ SQU1DLang compiler, version 1.8.0 written by Quan Thai.\n", user.Username)
+		fmt.Printf("Hello %s! This is the SQU1D++ SQU1DLang compiler, version 1.9.0 written by Quan Thai.\n", user.Username)
 		fmt.Printf("Available classes: %s\n\n", object.ListDefinedClasses())
 		repl.Start(os.Stdin, os.Stdout)
 	}

@@ -45,7 +45,7 @@ func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()
 	startLine := l.line
 	startCol := l.column
-	if startCol > 1 {
+	if startCol > 0 {
 		startCol = startCol - 1
 	}
 	tok.Line = startLine
@@ -464,13 +464,8 @@ func (l *Lexer) skipComment() {
 	// Skip the opening #
 	l.readChar()
 
-	// Read until we find the closing # or end of input
-	for l.ch != 0 && l.ch != '#' {
-		l.readChar()
-	}
-
-	// If we found a closing #, skip it too
-	if l.ch == '#' {
+	// Read until end of line or end of input (line comments only)
+	for l.ch != 0 && l.ch != '\n' && l.ch != '\r' {
 		l.readChar()
 	}
 }

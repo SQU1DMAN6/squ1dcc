@@ -771,6 +771,11 @@ func (vm *VM) executeDotExpression(left, right object.Object) error {
 	switch {
 	case left.Type() == object.HASH_OBJ:
 		return vm.executeHashDot(left, right)
+	case left.Type() == object.ERROR_OBJ:
+		return vm.executeErrorDot(left, right)
+	case left.Type() == object.NULL_OBJ:
+		// Null values silently return null for any field access
+		return vm.push(Null)
 	default:
 		return fmt.Errorf("Dot operator not supported: %s", left.Type())
 	}
@@ -825,6 +830,40 @@ func (vm *VM) executeHashDot(hash, right object.Object) error {
 	}
 
 	return vm.push(pair.Value)
+}
+
+func (vm *VM) executeErrorDot(left, right object.Object) error {
+	errObj := left.(*object.Error)
+
+	// For dot notation, the right side should be a string identifier
+	var keyName string
+	switch right := right.(type) {
+	case *object.String:
+		keyName = right.Value
+	default:
+		return fmt.Errorf("Dot operator requires string identifier, got: %s", right.Type())
+	}
+
+	switch keyName {
+	case "message":
+		return vm.push(&object.String{Value: errObj.Message})
+	case "filename":
+		return vm.push(&object.String{Value: errObj.Filename})
+	case "line":
+		return vm.push(&object.Integer{Value: int64(errObj.Line)})
+	case "column":
+		return vm.push(&object.Integer{Value: int64(errObj.Column)})
+	case "traceback":
+		// Build traceback as an array of strings
+		tb := make([]object.Object, len(errObj.Traceback))
+		for i, frame := range errObj.Traceback {
+			tb[i] = &object.String{Value: frame}
+		}
+		return vm.push(object.NewArray(tb))
+	default:
+		// Unknown field — return null like hash dot does
+		return vm.push(Null)
+	}
 }
 
 func (vm *VM) executeCall(numArgs int) error {
@@ -1029,6 +1068,11 @@ func (vm *VM) LastPoppedStackElem() object.Object {
 	}
 	// Also suppress printing when the last opcode was OpSuppress
 	if vm.lastOpcode == code.OpSuppress {
+		return nil
+	}
+	// Suppress values after OpJumpNotTruthy as this is a control-flow pop
+	// (e.g., the condition result `false` at end of a for/while loop).
+	if vm.lastOpcode == code.OpJumpNotTruthy {
 		return nil
 	}
 	// Also suppress if the last popped value was from an assignment; this

@@ -105,6 +105,13 @@ func loadSQXExecutableModule(path string) (*Hash, error) {
 		return nil, fmt.Errorf("SQX module %q has no functions", absPath)
 	}
 
+	// Attempt to create a session-aware loader
+	loader, loaderErr := NewSQXSessionLoader(absPath, manifest)
+	if loaderErr != nil && CurrentSessionMode != SessionModeLegacy {
+		// If loader creation fails, fall back to process-per-call
+		loader = nil
+	}
+
 	namespace := &Hash{Pairs: make(map[HashKey]HashPair)}
 	for fnName, spec := range manifest.Functions {
 		fnNameCopy := fnName
@@ -115,7 +122,16 @@ func loadSQXExecutableModule(path string) (*Hash, error) {
 			Attributes: make(map[string]Object),
 		}
 		builtin.Fn = func(args ...Object) Object {
-			out, runErr := runSQXModuleFunction(absPath, fnNameCopy, specCopy.Return, args...)
+			var out Object
+			var runErr error
+
+			// Use session loader if available
+			if loader != nil && !loader.session.IsClosed() {
+				out, runErr = loader.Call(fnNameCopy, specCopy.Return, args...)
+			} else {
+				out, runErr = runSQXModuleFunction(absPath, fnNameCopy, specCopy.Return, args...)
+			}
+
 			if runErr != nil {
 				return &Error{Message: runErr.Error()}
 			}
@@ -238,9 +254,106 @@ func parseSQXOutput(output []byte, returnMode string) (Object, error) {
 			return nil, fmt.Errorf("expected JSON output, got %q", trimmed)
 		}
 		return sqxJSONToObject(v), nil
+	case "structured":
+		return parseSQXStructured(trimmed)
 	default:
 		return nil, fmt.Errorf("unknown SQX return mode %q", returnMode)
 	}
+}
+
+// parseSQXStructured parses a StructuredResult JSON envelope:
+//
+//	{"ok":true,"value":...,"error":null}
+//	{"ok":false,"value":null,"error":"message"}
+//
+// Returns a Hash with keys: "ok" (Boolean), "value" (any), "error" (String|Null).
+//
+// STRICT RULES:
+// - "ok" must be a real JSON boolean, never a string.
+// - "error" must be a JSON string or null, never a string containing the word "null".
+// - "value" must be a valid JSON type, never a string pretending to be another type.
+func parseSQXStructured(trimmed string) (Object, error) {
+	// First, parse into raw interface to validate type integrity
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return nil, fmt.Errorf("expected structured JSON object, got invalid JSON: %q", trimmed)
+	}
+
+	// Validate that "ok" field exists and is a bool
+	okRaw, okExists := raw["ok"]
+	if !okExists {
+		return nil, fmt.Errorf("structured result missing required 'ok' field: %q", trimmed)
+	}
+	okVal, okIsBool := okRaw.(bool)
+	if !okIsBool {
+		return nil, fmt.Errorf("structured result 'ok' must be a boolean, got %T: %q", okRaw, trimmed)
+	}
+
+	// Validate that "value" field exists
+	if _, valueExists := raw["value"]; !valueExists {
+		return nil, fmt.Errorf("structured result missing required 'value' field: %q", trimmed)
+	}
+
+	// Validate that "error" field exists
+	errRaw, errExists := raw["error"]
+	if !errExists {
+		return nil, fmt.Errorf("structured result missing required 'error' field: %q", trimmed)
+	}
+
+	// Error field must be string or null
+	if errRaw != nil {
+		if _, errIsString := errRaw.(string); !errIsString {
+			return nil, fmt.Errorf("structured result 'error' must be string or null, got %T: %q", errRaw, trimmed)
+		}
+	}
+
+	// Now parse properly into the struct
+	var sr struct {
+		Ok    bool            `json:"ok"`
+		Value json.RawMessage `json:"value"`
+		Error string          `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &sr); err != nil {
+		return nil, fmt.Errorf("expected structured output, got %q", trimmed)
+	}
+
+	// Cross-validate: if ok is false, error should be non-empty; if ok is true, error should be empty
+	if sr.Ok && sr.Error != "" {
+		return nil, fmt.Errorf("structured result inconsistency: ok=true but error is non-empty: %q", trimmed)
+	}
+	if !sr.Ok && sr.Error == "" {
+		return nil, fmt.Errorf("structured result inconsistency: ok=false but error is empty: %q", trimmed)
+	}
+
+	pairs := make(map[HashKey]HashPair)
+
+	// ok field — always a real boolean
+	okKey := &String{Value: "ok"}
+	pairs[okKey.HashKey()] = HashPair{Key: okKey, Value: &Boolean{Value: okVal}}
+
+	// value field — must be valid JSON
+	valueKey := &String{Value: "value"}
+	if sr.Value != nil && len(sr.Value) > 0 {
+		var v interface{}
+		if err := json.Unmarshal(sr.Value, &v); err == nil {
+			pairs[valueKey.HashKey()] = HashPair{Key: valueKey, Value: sqxJSONToObject(v)}
+		} else {
+			// Raw value is not valid JSON — this is an error condition
+			return nil, fmt.Errorf("structured result 'value' is not valid JSON: %q", string(sr.Value))
+		}
+	} else {
+		pairs[valueKey.HashKey()] = HashPair{Key: valueKey, Value: &Null{}}
+	}
+
+	// error field — always string or null
+	errorKey := &String{Value: "error"}
+	if errRaw != nil && errRaw.(string) != "" {
+		pairs[errorKey.HashKey()] = HashPair{Key: errorKey, Value: &String{Value: errRaw.(string)}}
+	} else {
+		pairs[errorKey.HashKey()] = HashPair{Key: errorKey, Value: &Null{}}
+	}
+
+	return NewHash(pairs), nil
 }
 
 func parseSQXAuto(trimmed string) (Object, error) {
