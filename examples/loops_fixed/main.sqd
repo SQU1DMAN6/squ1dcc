@@ -1,0 +1,83 @@
+# SQU1DLang loop fix demo
+# Demonstrates that for and while loops no longer emit ghost "false" bits
+
+# For loop — standard counter
+var sum = 0
+for (var i = 0; i < 5; i = i + 1) {
+    sum = sum + i
+}
+io.echo("Sum of 0..4 = ", sum, "\n")
+
+# Verify sum is correct
+var test1 = 10
+if (sum == test1) {
+    io.echo("For loop: PASS\n")
+} el {
+    io.echo("For loop: FAIL (expected 10, got ", sum, ")\n")
+}
+
+# While loop — standard counter
+var j = 0
+var product = 1
+while (j < 5) {
+    product = product * (j + 1)
+    j = j + 1
+}
+io.echo("5! = ", product, "\n")
+
+var test2 = 120
+if (product == test2) {
+    io.echo("While loop: PASS\n")
+} el {
+    io.echo("While loop: FAIL (expected 120, got ", product, ")\n")
+}
+
+# Nested loops
+var nested_sum = 0
+for (var x = 0; x < 3; x = x + 1) {
+    for (var y = 0; y < 3; y = y + 1) {
+        nested_sum = nested_sum + (x * 3 + y)
+    }
+}
+io.echo("Nested sum = ", nested_sum, "\n")
+
+var test3 = 36
+if (nested_sum == test3) {
+    io.echo("Nested loops: PASS\n")
+} el {
+    io.echo("Nested loops: FAIL (expected 36, got ", nested_sum, ")\n")
+}
+
+# Loop with break
+var break_count = 0
+for (var k = 0; k < 100; k = k + 1) {
+    if (k == 7) {
+        break
+    }
+    break_count = break_count + 1
+}
+io.echo("Break after ", break_count, " iterations\n")
+
+if (break_count == 7) {
+    io.echo("Break: PASS\n")
+} el {
+    io.echo("Break: FAIL (expected 7, got ", break_count, ")\n")
+}
+
+# Loop with continue
+var even_sum = 0
+for (var n = 0; n < 10; n = n + 1) {
+    if (n % 2 == 1) {
+        continue
+    }
+    even_sum = even_sum + n
+}
+io.echo("Sum of evens 0..9 = ", even_sum, "\n")
+
+if (even_sum == 20) {
+    io.echo("Continue: PASS\n")
+} el {
+    io.echo("Continue: FAIL (expected 20, got ", even_sum, ")\n")
+}
+
+io.echo("All loop tests complete!\n")
