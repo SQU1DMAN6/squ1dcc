@@ -674,10 +674,91 @@ authors do not need to import `squ1d++/...` packages.
 
 For standalone builds, namespaced `.sqx` includes are rewritten to `pkg.load_sqx("<absolute-path>")` during include expansion.
 
+### SQX v1.9 Structured Returns
+
+SQX modules can now return structured data using the `"structured"` return mode:
+
+```json
+{"ok": true, "value": ..., "error": null}
+{"ok": false, "value": null, "error": "error message"}
+```
+
+This enables the use of `<<` (error pipe) and `<<<` (ok pipe) operators in SQU1DLang:
+
+```squ1d
+var result = term.get_size()
+if (<< result != null) {
+    io.echo("Error: ", << result)
+} el {
+    var size = <<< result
+    io.echo("Width: ", size.width, " Height: ", size.height)
+}
+```
+
+### Session Mode (SQX v1.9+)
+
+SQX modules can run in persistent session mode using the `--session` flag.
+The module stays alive and communicates via JSON-over-stdio, eliminating
+process-per-call overhead:
+
+```bash
+# Start a module in session mode (used internally by SQU1DCC)
+my_module.sqx --session
+```
+
+Enable session mode via CLI:
+```bash
+squ1dcc --sqx-session auto script.sqd   # auto-detect (default)
+squ1dcc --sqx-session always script.sqd # force session mode
+squ1dcc --sqx-session legacy script.sqd # process-per-call only
+```
+
+### Windows SQX Modules
+
+SQU1DLang includes two C-based SQX modules for Windows that provide
+low-level console control using the Win32 API:
+
+#### terminal_win_sqx
+
+Windows terminal control module providing:
+- `write(text)` / `writeln(text)` — Console output via WriteConsoleA
+- `clear()` — Screen clearing (ANSI/fallback)
+- `move(x, y)` — Cursor positioning (0-based)
+- `set_fg(color)` / `set_bg(color)` — ANSI 256-color support
+- `get_size()` / `cursor_pos()` — Console dimension queries
+- `enable_raw_mode()` / `disable_raw_mode()` — Raw console mode
+- `enter_alt_screen()` / `exit_alt_screen()` — Alternate screen buffer
+- `show_cursor(show)` — Cursor visibility control
+- `scroll(rows)` / `set_title(title)` / `set_size(w, h)` — Advanced control
+- `write_at(x, y, text)` — Positional output
+
+Source: `examples/terminal_win_sqx/main.c`
+
+#### keyboard_win_sqx
+
+Windows low-level keyboard input module providing:
+- `enable_raw_input()` / `disable_raw_input()` — Raw input mode
+- `read_key()` — Blocking read of single key/mouse/resize event
+- `read_keys()` — Non-blocking read of all pending events
+- `poll_event()` — Check for pending events
+- `flush_input()` — Discard pending input buffer
+- `get_key_state(vk_code)` — Query individual key state
+- `get_pressed_keys()` — Get all currently held keys
+- `wait_key(vk_codes...)` — Wait for specific key combination
+- `bind(key, callback)` — Register key binding specification
+
+Returns keyboard, mouse, resize, and focus events as structured JSON.
+
+Source: `examples/keyboard_win_sqx/main.c`
+
+Both modules use the SQX v1.9 structured return contract and are designed
+to work together for building terminal UI applications. See each module's
+`README.md` for full documentation, API reference, and usage examples.
+
 ### Runtime Note for Included Functions
 
 Namespace imports from `pkg.include(path, namespace)` currently use the evaluator compatibility path for imported function bodies. Most language features work as expected, but advanced control-flow behavior can differ from fully compiled top-level code in some edge cases.
 
 ---
 
-_SQU1D++ SQU1DLang Compiler, version 1.8.0, written by Quan Thai._
+_SQU1D++ SQU1DLang Compiler, version 1.9.0, written by Quan Thai._
